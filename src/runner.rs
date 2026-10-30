@@ -22,22 +22,33 @@ impl RunStatus {
     }
 }
 
-pub fn run_command(argv: &[OsString], cwd: &Path, env: &ChildEnvironment) -> Result<RunStatus> {
+pub fn run_command(
+    argv: &[OsString],
+    cwd: &Path,
+    env: &ChildEnvironment,
+    supervisor: &crate::process::Supervisor,
+) -> Result<RunStatus> {
     let mut command = Command::new(&argv[0]);
     command.args(&argv[1..]).current_dir(cwd).env("PWD", cwd);
     env.apply(&mut command);
-    match command.status() {
+    match supervisor.status(&mut command) {
         Ok(status) => Ok(status.code().map_or_else(
             || RunStatus::Signaled(status.signal().unwrap_or(0)),
             |code| RunStatus::Exited(u8::try_from(code).unwrap_or(125)),
         )),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+        Err(error)
+            if error
+                .downcast_ref::<io::Error>()
+                .is_some_and(|e| e.kind() == io::ErrorKind::NotFound) =>
+        {
             eprintln!("git-commitfs: command not found: {:?}", argv[0]);
             Ok(RunStatus::NotFound)
         }
         Err(error)
-            if error.kind() == io::ErrorKind::PermissionDenied
-                || error.raw_os_error() == Some(libc::ENOEXEC) =>
+            if error.downcast_ref::<io::Error>().is_some_and(|e| {
+                e.kind() == io::ErrorKind::PermissionDenied
+                    || e.raw_os_error() == Some(libc::ENOEXEC)
+            }) =>
         {
             eprintln!("git-commitfs: command is not executable: {:?}", argv[0]);
             Ok(RunStatus::NotExecutable)

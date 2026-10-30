@@ -56,6 +56,7 @@ pub fn import(
         .collect();
     let mut directory_modes = Vec::new();
     for entry in entries.iter().filter(|e| selected.contains(&e.path)) {
+        candidate.git.supervisor.check()?;
         let destination = run.checkout().join(&entry.path);
         ensure_safe_parents(run.checkout(), &entry.path)?;
         if entry.metadata.is_dir() {
@@ -91,6 +92,7 @@ fn enumerate(
         .with_context(|| format!("read source directory {}", root.join(relative).display()))?
     {
         let item = item?;
+        candidate.git.supervisor.check()?;
         if item.file_name() == ".git" {
             continue;
         }

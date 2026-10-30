@@ -1,13 +1,15 @@
 use std::{
     ffi::{OsStr, OsString},
     fs::File,
-    io::Write,
     os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
+    sync::Arc,
 };
 
 use anyhow::{Context, Result, bail};
+
+use crate::process::Supervisor;
 
 #[derive(Clone, Default)]
 pub struct ChildEnvironment {
@@ -31,19 +33,22 @@ impl ChildEnvironment {
 pub struct Git {
     pub cwd: PathBuf,
     pub env: ChildEnvironment,
+    pub supervisor: Arc<Supervisor>,
 }
 
 impl Git {
-    pub fn source(cwd: &Path) -> Self {
+    pub fn source(cwd: &Path, supervisor: Arc<Supervisor>) -> Self {
         Self {
             cwd: cwd.to_owned(),
             env: ChildEnvironment::default(),
+            supervisor,
         }
     }
 
-    pub fn private(cwd: &Path, remove: &[OsString]) -> Self {
+    pub fn private(cwd: &Path, remove: &[OsString], supervisor: Arc<Supervisor>) -> Self {
         Self {
             cwd: cwd.to_owned(),
+            supervisor,
             env: ChildEnvironment {
                 remove: remove.to_owned(),
                 set: vec![
@@ -57,7 +62,7 @@ impl Git {
 
     pub fn command(&self, args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Command {
         let mut command = Command::new("git");
-        command.current_dir(&self.cwd);
+        command.current_dir(&self.cwd).stdin(Stdio::null());
         self.env.apply(&mut command);
         command
             .env("GIT_OPTIONAL_LOCKS", "0")
@@ -68,28 +73,24 @@ impl Git {
 
     pub fn output(&self, args: &[&str]) -> Result<Vec<u8>> {
         let output = self
-            .command(args)
-            .stdin(Stdio::null())
-            .output()
+            .supervisor
+            .capture(&mut self.command(args), None, None)
             .context("execute Git (Git >= 2.43 is required)")?;
         checked(output, args[0])
     }
 
     pub fn os_output(&self, args: &[&OsStr]) -> Result<Vec<u8>> {
         let output = self
-            .command(args)
-            .stdin(Stdio::null())
-            .output()
+            .supervisor
+            .capture(&mut self.command(args), None, None)
             .context("execute Git")?;
         checked(output, "operation")
     }
 
     pub fn optional_output(&self, args: &[&str]) -> Result<Option<Vec<u8>>> {
         let output = self
-            .command(args)
-            .stdin(Stdio::null())
-            .output()
-            .context("execute optional Git query")?;
+            .supervisor
+            .capture(&mut self.command(args), None, None)?;
         if output.status.code() == Some(1) {
             Ok(None)
         } else {
@@ -104,46 +105,26 @@ impl Git {
     }
 
     pub fn input_output(&self, args: &[&str], input: Vec<u8>) -> Result<Output> {
-        let mut child = self
-            .command(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("start Git input query")?;
-        let mut pipe = child.stdin.take().context("Git query input")?;
-        let writer = std::thread::spawn(move || pipe.write_all(&input));
-        let output = child.wait_with_output().context("wait for Git query")?;
-        let written = writer
-            .join()
-            .map_err(|_| anyhow::anyhow!("Git input writer panicked"))?;
-        if output.status.success() || output.status.code() == Some(1) {
-            written.context("write Git query input")?;
-        }
-        Ok(output)
+        self.supervisor
+            .capture(&mut self.command(args), Some(input), None)
     }
 
     pub fn pack(&self, tree: &OsStr, path: &Path) -> Result<()> {
-        let mut command = self.command(["pack-objects", "--stdout", "--revs"]);
-        command
-            .stdin(Stdio::piped())
-            .stdout(File::create(path)?)
-            .stderr(Stdio::piped());
-        let mut child = command.spawn().context("export candidate Git objects")?;
-        let mut input = child.stdin.take().context("Git pack input")?;
-        input.write_all(tree.as_encoded_bytes())?;
-        input.write_all(b"\n")?;
-        drop(input);
-        checked(child.wait_with_output()?, "pack-objects")?;
+        let mut input = tree.as_encoded_bytes().to_vec();
+        input.push(b'\n');
+        let output = self.supervisor.capture(
+            &mut self.command(["pack-objects", "--stdout", "--revs"]),
+            Some(input),
+            Some(File::create(path)?),
+        )?;
+        checked(output, "pack-objects")?;
         Ok(())
     }
 
     pub fn import_pack(&self, path: &Path) -> Result<()> {
-        let output = self
-            .command(["index-pack", "--stdin"])
-            .stdin(File::open(path)?)
-            .output()
-            .context("import candidate Git objects")?;
+        let mut command = self.command(["index-pack", "--stdin"]);
+        command.stdin(File::open(path)?);
+        let output = self.supervisor.capture(&mut command, None, None)?;
         checked(output, "index-pack")?;
         Ok(())
     }

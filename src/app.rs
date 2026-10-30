@@ -22,13 +22,20 @@ impl AppOutcome {
 
 pub fn execute(command: Commands, invocation_dir: &Path) -> AppOutcome {
     let Commands::Run(options) = command;
-    let source = match snapshot::SourceRepository::discover(invocation_dir) {
-        Ok(source) => source,
+    let supervisor = match crate::process::Supervisor::new() {
+        Ok(supervisor) => supervisor,
         Err(error) => return AppOutcome::failure(error),
+    };
+    let source = match snapshot::SourceRepository::discover(
+        invocation_dir,
+        std::sync::Arc::clone(&supervisor),
+    ) {
+        Ok(source) => source,
+        Err(error) => return early_failure(error),
     };
     let run = match workspace::RunDirectory::allocate(&source.root) {
         Ok(run) => run,
-        Err(error) => return AppOutcome::failure(error),
+        Err(error) => return early_failure(error),
     };
     let result = (|| {
         let candidate = snapshot::capture(&source, &run)?;
@@ -37,8 +44,22 @@ pub fn execute(command: Commands, invocation_dir: &Path) -> AppOutcome {
             ignored::import(&source, &candidate, &run, options.copy_mode)?;
         }
         run.clear_scratch()?;
-        runner::run_command(&options.argv, run.checkout(), &source.child_environment())
+        runner::run_command(
+            &options.argv,
+            run.checkout(),
+            &source.child_environment(),
+            &supervisor,
+        )
     })();
+    let result = result.or_else(|error: anyhow::Error| {
+        error
+            .downcast_ref::<crate::process::Interrupted>()
+            .map(|signal| signal.0)
+            .map_or_else(
+                || Err(error),
+                |signal| Ok(runner::RunStatus::Signaled(signal)),
+            )
+    });
     let finalized = run.finalize(options.keep, &result);
     finish(result, finalized)
 }
@@ -63,6 +84,20 @@ fn finish(result: Result<runner::RunStatus>, finalized: workspace::Finalization)
         retained: finalized.retained,
         diagnostics,
     }
+}
+
+fn early_failure(error: anyhow::Error) -> AppOutcome {
+    error
+        .downcast_ref::<crate::process::Interrupted>()
+        .map(|signal| signal.0)
+        .map_or_else(
+            || AppOutcome::failure(error),
+            |signal| AppOutcome {
+                code: runner::RunStatus::Signaled(signal).shell_code(),
+                retained: None,
+                diagnostics: Vec::new(),
+            },
+        )
 }
 
 #[cfg(test)]

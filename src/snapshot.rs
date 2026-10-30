@@ -24,8 +24,11 @@ pub struct SourceRepository {
 }
 
 impl SourceRepository {
-    pub fn discover(cwd: &Path) -> Result<Self> {
-        let git = Git::source(cwd);
+    pub fn discover(
+        cwd: &Path,
+        supervisor: std::sync::Arc<crate::process::Supervisor>,
+    ) -> Result<Self> {
+        let git = Git::source(cwd, supervisor);
         let version = git.output(&["--version"])?;
         let version = String::from_utf8_lossy(&version);
         let mut numbers = version
@@ -108,7 +111,11 @@ pub struct CheckoutSettings {
 }
 
 pub fn capture(source: &SourceRepository, run: &RunDirectory) -> Result<Candidate> {
-    let git = Git::private(run.checkout(), &source.routing);
+    let git = Git::private(
+        run.checkout(),
+        &source.routing,
+        std::sync::Arc::clone(&source.git.supervisor),
+    );
     git.os_output(&[
         "init".as_ref(),
         "--quiet".as_ref(),
