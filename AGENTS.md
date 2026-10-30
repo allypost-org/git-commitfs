@@ -4,9 +4,12 @@
 
 git-commitfs is a Rust CLI for running commands against a disposable checkout of
 the Git index. The approved design and implementation plan are under
-`docs/superpowers/`. Read them before product implementation; setup work does
-not imply that the CLI has been implemented. There is currently one package
-and one binary, `git-commitfs`, under `src/`.
+`docs/superpowers/`. Read them before changing product behavior. The CLI is
+implemented as one package and one binary, `git-commitfs`, under `src/`.
+Capture (`snapshot`), materialization (`checkout`), ignored imports (`ignored` and
+`copy`), lifetime (`workspace`), and command/process supervision (`runner`,
+`process`, `terminal`) have separate responsibilities. Integration tests use real
+Git fixtures; `tests/acceptance.rs` also exercises real hooks and partial commits.
 
 ## Toolchain and commands
 

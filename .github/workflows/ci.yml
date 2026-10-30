@@ -1,0 +1,68 @@
+name: Linux checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          version: 2026.10.4
+          install_args: --include-task-tools
+      - name: Record tool versions
+        run: |
+          git --version
+          mise exec -- rustc --version
+          mise exec -- cargo --version
+      - run: mise exec -- just check
+      - name: Verify the complete formatting pipeline
+        run: |
+          mise exec -- just fmt-dev
+          git diff --exit-code
+      - run: mise exec -- just build
+      - run: mise exec -- cargo package --list
+
+  git-minimum:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          version: 2026.10.4
+          install_args: --include-task-tools
+      - name: Build the minimum supported Git series
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl --fail --location --silent --show-error https://www.kernel.org/pub/software/scm/git/git-2.43.7.tar.xz -o git.tar.xz
+          echo '657e2374455d9e62f6cdb3e7c55d867b6db5404d744e97e112cc5b0db687a19f  git.tar.xz' | sha256sum --check
+          tar -xf git.tar.xz
+          make -C git-2.43.7 -j2 CFLAGS='-O2 -std=gnu99' NO_CURL=YesPlease NO_EXPAT=YesPlease NO_OPENSSL=YesPlease NO_GETTEXT=YesPlease NO_TCLTK=YesPlease prefix="$RUNNER_TEMP/git243" install
+          echo "$RUNNER_TEMP/git243/bin" >> "$GITHUB_PATH"
+      - name: Test with Git 2.43
+        run: |
+          git --version
+          mise exec -- rustc --version
+          mise exec -- just test
+
+  restricted:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          version: 2026.10.4
+          install_args: --include-task-tools
+      - name: Test as non-root without capabilities, network, or FUSE
+        run: |
+          mise exec -- rustc --version
+          mise exec -- bash scripts/test-restricted

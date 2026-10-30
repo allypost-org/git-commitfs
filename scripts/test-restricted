@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+manifest=$(mktemp)
+executables=$(mktemp)
+trap 'rm -f "$manifest" "$executables"' EXIT
+cargo test --locked --workspace --all-targets --all-features --no-run --message-format=json > "$manifest"
+python3 - "$manifest" "$executables" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1]) as source, open(sys.argv[2], "w") as output:
+    for line in source:
+        entry = json.loads(line)
+        if entry.get("reason") == "compiler-artifact" and entry["profile"]["test"]:
+            if executable := entry.get("executable"):
+                print(executable, file=output)
+PY
+test -s "$executables"
+target_root=$(cargo metadata --locked --no-deps --format-version=1 | python3 -c 'import json,os,sys; print(os.path.realpath(json.load(sys.stdin)["target_directory"]))')
+# The read-only bind keeps embedded CARGO_BIN_EXE paths valid. All test fixtures
+# and disposable checkouts live in the container's private writable /tmp.
+chmod 644 "$executables"
+docker build --tag git-commitfs-restricted --file .github/containers/restricted.Dockerfile .github/containers
+docker run --rm --user "$(id -u):$(id -g)" --cap-drop ALL \
+    --security-opt no-new-privileges --network none --read-only \
+    --tmpfs /tmp:rw,exec,nosuid,size=1g \
+    --volume "$PWD:$PWD:ro" --volume "$target_root:$target_root:ro" \
+    --volume "$executables:/validation-tests:ro" \
+    --workdir "$PWD" --env HOME=/tmp --env GIT_OPTIONAL_LOCKS=0 \
+    git-commitfs-restricted

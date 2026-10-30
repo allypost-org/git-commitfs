@@ -1,6 +1,6 @@
 # Staged Command Execution Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Run arbitrary commands against a clean, disposable checkout of the effective Git index, optionally including independently copied ignored files.
 
@@ -9,6 +9,29 @@
 **Tech Stack:** Rust edition 2024; Git CLI >= 2.43; `clap` derive for CLI parsing, `tempfile` for owned storage, `anyhow` for contextual errors, and Linux `libc`/`signal-hook` for reflinks, process groups, and terminal handling. Use standard-library process-based integration tests; no asynchronous runtime or Git library is needed. Resolve dependency versions and commit `Cargo.lock` during Task 1, adding signal dependencies when their task needs them.
 
 **Spec:** [Approved design](../specs/2026-10-30-staged-command-design.md). Read both documents before execution. This plan is the requested deliverable; do not start implementation without a subsequent user instruction.
+
+## Execution record (2026-10-30)
+
+Implementation was subsequently authorized by the user and completed sequentially
+in this repository. The checkboxes track delivered behavior and validation, not a
+literal transcript of the proposed commands or commit boundaries. Related tasks
+were combined into commits where they shared the same working implementation.
+
+The final implementation adds `process.rs` and `terminal.rs` for supervision,
+shared with Git helpers through an `Arc<Supervisor>`. `Candidate` retains tracked
+path sets rather than public index-entry objects. Capture imports blobs and sparse
+trees before expanding the copied index: Git can refresh shared-index timestamps
+and alternate-object mtimes during otherwise read-only operations. Possible split
+index dependencies are copied before Git reads them; candidate records are then
+rebuilt into a fresh private index. Source-state assertions include file mtimes.
+No source alternates remain in the finished checkout.
+
+All 65 tests pass locally, with Git 2.43.7, and in the non-root restricted container
+using distro Git 2.43.0. The release build, package inspection, formatter pipeline,
+Clippy, actionlint, and shellcheck were checked locally. Hosted CI has been
+configured but has not run remotely. See [validation notes](../../validation.md)
+for commands, environment, measurements, and capability-dependent limitations.
+The bootstrap hk helper remains in place pending a separate self-hosting change.
 
 ## Global Constraints
 
@@ -132,7 +155,7 @@ offers `Repo::new()`, `write(path, bytes)`, `commit_all()`, `git(&[&str])`,
 `SourceState` compares working files/symlinks/modes and relevant Git file contents,
 including objects, index, refs, config, and hooks, without refreshing the index.
 
-- [ ] **1. Write `partially_staged_content_is_used_and_writes_are_discarded`.**
+- [x] **1. Write `partially_staged_content_is_used_and_writes_are_discarded`.**
 
   ```rust
   let repo = Repo::new();
@@ -153,9 +176,9 @@ including objects, index, refs, config, and hooks, without refreshing the index.
   absent, `git status --porcelain` is initially empty, and exit 17 preserves
   the source and returns 17. Remove ambient Git configuration from fixtures,
   set fixture identity explicitly, and keep fixture outputs outside the source.
-- [ ] **2. Run `cargo test --test staged_run`.** Expect a failure because the
+- [x] **2. Run `cargo test --test staged_run`.** Expect a failure because the
   current binary prints `Hello, world!` and does not run the command.
-- [ ] **3. Implement the plain end-to-end path and add required dependencies.**
+- [x] **3. Implement the plain end-to-end path and add required dependencies.**
   Check Git >= 2.43; reject bare/outside-repository invocation. Allocate a unique
   external run root with `worktree/` and `scratch/`. For an ordinary index,
   copy it and produce its tree using private storage; read source objects only
@@ -168,9 +191,9 @@ including objects, index, refs, config, and hooks, without refreshing the index.
   Use an empty template/hooks directory and disable private fsmonitor/automatic
   maintenance. Run argv directly at the workspace root, then explicitly close
   storage. Retain RAII cleanup as a fallback, not the only error-reporting path.
-- [ ] **4. Run `cargo test --test staged_run`.** Expect all tests to pass,
+- [x] **4. Run `cargo test --test staged_run`.** Expect all tests to pass,
   including private object ownership and both successful and failed commands.
-- [ ] **5. Commit only this task's files:** `feat: run commands against a disposable staged checkout`.
+- [x] **5. Commit only this task's files:** `feat: run commands against a disposable staged checkout`.
 
 ## Task 2: Freeze the effective index across Git repository variants
 
@@ -182,7 +205,7 @@ discovery/capture signatures. Produce captured HEAD tracked paths and
 self-contained candidate storage; checkout must not reread the live source index.
 Extend fixture subprocess construction to accept OS-string argv/environment.
 
-- [ ] **1. Add index-capture tests:** an alternate index selects `alternate\n`
+- [x] **1. Add index-capture tests:** an alternate index selects `alternate\n`
   while the normal index selects `normal\n`; linked worktrees resolve their own
   index; split indexes still work; sparse/sparse-index sources populate omitted
   tracked files; SHA-256 candidates retain the source object format. Test unborn
@@ -197,9 +220,9 @@ Extend fixture subprocess construction to accept OS-string argv/environment.
   the original complete index. Do not use timing sleeps for these tests.
   A missing candidate object must fail setup without invoking a configured
   promisor remote or writing fetched objects into the source.
-- [ ] **2. Run `cargo test --test index_capture`.** Expect failures in the newly
+- [x] **2. Run `cargo test --test index_capture`.** Expect failures in the newly
   unsupported cases; record which expectations fail before changing the code.
-- [ ] **3. Implement byte-safe discovery and normalization.** Resolve paths with
+- [x] **3. Implement byte-safe discovery and normalization.** Resolve paths with
   Git and preserve non-UTF-8 bytes; remove only record delimiters, never arbitrary
   trailing whitespace. Read one stable index-file handle. Resolve/copy the split
   dependency selected by that exact private index into private storage before
@@ -210,9 +233,9 @@ Extend fixture subprocess construction to accept OS-string argv/environment.
   no promisor/remote configuration; avoid depending on newer Git no-fetch
   options unavailable at the supported minimum. Report missing local objects
   rather than triggering a source-repository fetch.
-- [ ] **4. Run `cargo test --test index_capture` and `cargo test --test staged_run`.**
+- [x] **4. Run `cargo test --test index_capture` and `cargo test --test staged_run`.**
   Expect pass with unchanged source files/index/refs/objects in every case.
-- [ ] **5. Commit:** `feat: capture alternate split and sparse Git indexes safely`.
+- [x] **5. Commit:** `feat: capture alternate split and sparse Git indexes safely`.
 
 ## Task 3: Preserve checkout conversions and source-independent Git state
 
@@ -223,7 +246,7 @@ create `tests/checkout.rs` and filter fixtures under `tests/fixtures/`.
 `checkout::materialize` and `git::ChildEnvironment::apply` signatures.
 Export the sanitized child environment to execution through orchestration.
 
-- [ ] **1. Add checkout tests:** binary/empty files, executable bits, symlinks,
+- [x] **1. Add checkout tests:** binary/empty files, executable bits, symlinks,
   source roots and filenames containing spaces/newlines/non-UTF-8 bytes, and
   filenames ending in newlines.
   `export-ignore` must not hide a tracked file. Stage `.gitattributes`, then edit
@@ -237,9 +260,9 @@ Export the sanitized child environment to execution through orchestration.
   private `git fsck`/`git show HEAD:path` still work. This deliberate fixture
   mutation is not a source-invariance assertion. Assert the synthetic commit has
   no parent and requires neither ambient identity nor signing.
-- [ ] **2. Run `cargo test --test checkout`.** Expect failures proving the
+- [x] **2. Run `cargo test --test checkout`.** Expect failures proving the
   missing conversion/environment cases.
-- [ ] **3. Implement conversion input capture and private configuration.** Copy
+- [x] **3. Implement conversion input capture and private configuration.** Copy
   the exact settings whitelist from the spec, preserving byte-valued config.
   Snapshot external attributes inputs and resolve paths relative to their Git
   configuration context. Force attributes to the candidate tree for checkout;
@@ -249,9 +272,9 @@ Export the sanitized child environment to execution through orchestration.
   Remove all source object alternates before the command, and verify private
   connectivity and the clean tracked baseline. Reject unsupported/missing filter
   prerequisites clearly. Do not claim automatic LFS installation/downloads.
-- [ ] **4. Run `cargo test --test checkout` and `cargo test --tests`.** Expect
+- [x] **4. Run `cargo test --test checkout` and `cargo test --tests`.** Expect
   pass for conversion fidelity, private Git writes, and all earlier behavior.
-- [ ] **5. Commit:** `feat: preserve staged checkout attributes and private Git state`.
+- [x] **5. Commit:** `feat: preserve staged checkout attributes and private Git state`.
 
 ## Task 4: Include ignored local files without importing unstaged content
 
@@ -263,7 +286,7 @@ Implement `ignored::import(...)` and `copy::regular_file(...)` with `Copy` mode;
 add `CopyMode` variants now, with the optimization implemented in Task 5.
 Capture ignore settings and HEAD deletion exclusions in `Candidate`.
 
-- [ ] **1. Add ignored-file tests:** default exclusion, opt-in inclusion, nested
+- [x] **1. Add ignored-file tests:** default exclusion, opt-in inclusion, nested
   staged rules, negation, staged versus dirty/untracked `.gitignore`, local/global
   excludes, force-added tracked files, and newly ignored staged deletions.
   Verify `target/cache` is private after command edits/removal and remains
@@ -273,8 +296,8 @@ Capture ignore settings and HEAD deletion exclusions in `Candidate`.
   unrelated non-imported special files do not prevent a run. **Review focus:**
   tracked symlink/file/directory ancestors cannot redirect imports or be replaced.
   Ensure `TMPDIR` inside the source cannot produce recursive self-import.
-- [ ] **2. Run `cargo test --test ignored`.** Expect option/visibility failures.
-- [ ] **3. Implement Git-based eligibility before copying any source ignore files.**
+- [x] **2. Run `cargo test --test ignored`.** Expect option/visibility failures.
+- [x] **3. Implement Git-based eligibility before copying any source ignore files.**
   Traverse with symlink-aware metadata and OS-string paths; exclude `.git` at
   every depth. Ask private Git to evaluate candidate paths against captured rules,
   using NUL-delimited `check-ignore --no-index` input/output. Interpret negations
@@ -285,9 +308,9 @@ Capture ignore settings and HEAD deletion exclusions in `Candidate`.
   preserve modes; never follow directory symlinks. Empty ignored directories may
   be reproduced. Fail atomically with respect to starting the command, not by
   silently skipping eligible unreadable/unsupported inputs.
-- [ ] **4. Run `cargo test --test ignored` and `cargo test --tests`.** Expect
+- [x] **4. Run `cargo test --test ignored` and `cargo test --tests`.** Expect
   pass with unchanged original ignored data, source index, and tracked content.
-- [ ] **5. Commit:** `feat: optionally import ignored files into disposable storage`.
+- [x] **5. Commit:** `feat: optionally import ignored files into disposable storage`.
 
 ## Task 5: Add selectable reflink copying with safe fallback
 
@@ -298,25 +321,25 @@ create `tests/copy_modes.rs` and unit tests beside copy-policy code.
 `--copy-mode=auto|copy|reflink`, default `Auto`; retain `regular_file` and
 `ignored::import` signatures. This option controls ignored regular files only.
 
-- [ ] **1. Test all policy branches.** `Copy` creates different inodes and
+- [x] **1. Test all policy branches.** `Copy` creates different inodes and
   independent bytes; `Auto` falls back on unsupported/cross-device cloning;
   `Reflink` returns 125 when unsupported. Both successful paths preserve mode
   and isolate subsequent writes. Inject clone results into an internal policy
   helper to deterministically test unsupported errors, permission failure,
   storage/I/O failure, and cleanup after a partially created destination.
   **Review focus:** partial destination content never survives fallback.
-- [ ] **2. Run `cargo test --test copy_modes` and `cargo test copy::`.** Expect
+- [x] **2. Run `cargo test --test copy_modes` and `cargo test copy::`.** Expect
   failures for the missing option and clone-policy implementation.
-- [ ] **3. Implement Linux `FICLONE` with private destination creation.**
+- [x] **3. Implement Linux `FICLONE` with private destination creation.**
   Fallback only for recognized lack-of-support/cross-filesystem errors; propagate
   permission, storage, and I/O failures with source/destination context. Remove
   or safely reset the destination before ordinary-copy fallback. On a filesystem
   with reflinks, exercise a real successful clone; explicitly report a skipped
   success-path integration test when unavailable, while keeping injected policy
   tests mandatory. `--copy-mode` with no imported regular files is a harmless no-op.
-- [ ] **4. Run `cargo test --test copy_modes`, `cargo test copy::`, and
+- [x] **4. Run `cargo test --test copy_modes`, `cargo test copy::`, and
   `cargo test --test ignored`.** Expect pass; review any capability-dependent skip.
-- [ ] **5. Commit:** `feat: support reflink copying with explicit fallback policy`.
+- [x] **5. Commit:** `feat: support reflink copying with explicit fallback policy`.
 
 ## Task 6: Finish retention, diagnostics, and command-result precedence
 
@@ -327,7 +350,7 @@ create `tests/copy_modes.rs` and unit tests beside copy-policy code.
 default `Never`. Complete `RunDirectory::finalize`, `Finalization`,
 `RunStatus::shell_code`, and `AppOutcome` as specified above.
 
-- [ ] **1. Add lifecycle tests:** preserve exit codes 0, 17, and 125; report
+- [x] **1. Add lifecycle tests:** preserve exit codes 0, 17, and 125; report
   missing/non-executable commands as 127/126; usage as 2 and preparation errors
   as 125. Assert byte-exact argv (including shell metacharacters/non-UTF-8),
   stdin/stdout/stderr inheritance, root cwd from a source subdirectory, and no
@@ -337,9 +360,9 @@ default `Never`. Complete `RunDirectory::finalize`, `Finalization`,
   Two concurrent runs must have distinct paths and independent mutations.
   Deterministically inject finalization failure: success becomes 125; command
   exit 17 remains 17 and the cleanup error is still reported.
-- [ ] **2. Run `cargo test --test lifecycle`.** Expect failures for the newly
+- [x] **2. Run `cargo test --test lifecycle`.** Expect failures for the newly
   introduced retention and error-precedence cases.
-- [ ] **3. Implement the final CLI/orchestration contract.** Only successfully
+- [x] **3. Implement the final CLI/orchestration contract.** Only successfully
   prepared workspaces reach `run_command`. Keep all per-run resources under one
   owner; clean temporary capture artifacts before handing over a retained
   checkout, without leaving source-dependent metadata. Finalize every post-
@@ -347,9 +370,9 @@ default `Never`. Complete `RunDirectory::finalize`, `Finalization`,
   Treat a nonzero result or wrapper error as failure for retention. Preserve the
   primary result while reporting secondary cleanup errors. Do not expose an
   unimplemented persistence/backend flag or automatically fail on command writes.
-- [ ] **4. Run `cargo test --test lifecycle` and `cargo test --tests`.** Expect
+- [x] **4. Run `cargo test --test lifecycle` and `cargo test --tests`.** Expect
   pass and no leaked directories except those explicitly retained by tests.
-- [ ] **5. Commit:** `feat: retain failed workspaces and preserve command results`.
+- [x] **5. Commit:** `feat: retain failed workspaces and preserve command results`.
 
 ## Task 7: Supervise signals, process groups, and interactive terminals
 
@@ -361,7 +384,7 @@ default `Never`. Complete `RunDirectory::finalize`, `Finalization`,
 with Git helper execution in `git.rs`; their exact private helpers are builder
 choices. Signals must be handled throughout preparation and execution.
 
-- [ ] **1. Add deterministic process tests.** A ready marker/pipe confirms the
+- [x] **1. Add deterministic process tests.** A ready marker/pipe confirms the
   child and grandchild exist before sending SIGINT, SIGTERM, or SIGHUP. Assert
   130/143/129 respectively, dead group members, removed workspace, and live caller.
   If the main child exits 17 leaving a worker, terminate the worker and preserve
@@ -372,9 +395,9 @@ choices. Signals must be handled throughout preparation and execution.
   terminal-generated Ctrl-C, and restoration of the
   original foreground process group. Put hard watchdog deadlines around tests
   so a bug fails instead of hanging CI.
-- [ ] **2. Run `cargo test --test signals -- --test-threads=1`.** Expect failures
+- [x] **2. Run `cargo test --test signals -- --test-threads=1`.** Expect failures
   for unsupported group/TTY behavior; never signal a shared test-runner group.
-- [ ] **3. Implement safe supervision.** Register `signal-hook` handling before
+- [x] **3. Implement safe supervision.** Register `signal-hook` handling before
   preparation; handlers only notify normal code. An interrupted preparation
   returns `RunStatus::Signaled` for retention/result mapping, not a generic
   setup-error 125. Spawn managed groups for user commands and blocking Git/filter
@@ -386,9 +409,9 @@ choices. Signals must be handled throughout preparation and execution.
   followed by SIGKILL; a second termination request escalates immediately. Observe
   completion using process/signal events, not application-level busy polling.
   Document the SIGKILL/crash and deliberately detached-process exceptions.
-- [ ] **4. Run `cargo test --test signals -- --test-threads=1` and
+- [x] **4. Run `cargo test --test signals -- --test-threads=1` and
   `cargo test --all-targets`.** Expect pass with no surviving fixture processes.
-- [ ] **5. Commit:** `feat: supervise command groups and restore terminal state`.
+- [x] **5. Commit:** `feat: supervise command groups and restore terminal state`.
 
 ## Task 8: Document and verify the mount-free Linux release
 
@@ -399,7 +422,7 @@ need automated coverage. Commit any resulting lockfile changes explicitly.
 **Interfaces:** The completed CLI and lifecycle contract; no additional product
 flags, configuration language, hook installer, or backend framework.
 
-- [ ] **1. Add final acceptance assertions.** Help lists only implemented flags
+- [x] **1. Add final acceptance assertions.** Help lists only implemented flags
   and explains root cwd, disposable ignored writes, and the non-sandbox boundary.
   Test a real pre-commit invocation with mixed staged/unstaged content and a
   path-limited commit that supplies an alternate index. A rejected commit leaves
@@ -409,9 +432,9 @@ flags, configuration language, hook installer, or backend framework.
   Test that a formatter-like command may
   change its disposable files and return 0. Test the minimum-version diagnostic
   using a controlled Git version fixture.
-- [ ] **2. Run `cargo test --all-targets`.** Expect failures for missing final
+- [x] **2. Run `cargo test --all-targets`.** Expect failures for missing final
   help/integration coverage before fixing the remaining contract gaps.
-- [ ] **3. Write installation and usage documentation plus Linux CI.** Include
+- [x] **3. Write installation and usage documentation plus Linux CI.** Include
   `cargo install --path . --bin git-commitfs`, direct/Git-subcommand examples,
   ignored copy policies, retention, unsupported inputs, and exit statuses.
   Show `git commitfs run -- cargo fmt --check`, followed separately by a normal
@@ -427,7 +450,7 @@ flags, configuration language, hook installer, or backend framework.
   container job without `/dev/fuse`, added capabilities, or privileged mode.
   Pin action revisions and build images when implementing the workflow, and
   record exact Git/Rust versions in job output. No mount-based CI setup is needed.
-- [ ] **4. Run final checks:**
+- [x] **4. Run final checks:**
 
   ```sh
   mise exec -- just check
@@ -441,7 +464,7 @@ flags, configuration language, hook installer, or backend framework.
   coverage as pending rather than claiming compatibility. Record cold, repeated,
   and one-staged-file-change measurements as observations with environment and
   repository details, not a pass/fail speed threshold or a reason to add a cache.
-- [ ] **5. Commit:** `docs: document staged command execution and Linux compatibility`.
+- [x] **5. Commit:** `docs: document staged command execution and Linux compatibility`.
 
 ## Coverage and handoff
 

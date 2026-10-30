@@ -1,7 +1,8 @@
 # git-commitfs: staged command execution
 
 Status: approved by the user on 2026-10-30. Approval covers the design and
-writing the implementation plan, not starting product implementation.
+writing the implementation plan. Product implementation was subsequently authorized
+by the user and is recorded in the implementation plan and `docs/validation.md`.
 
 ## Intent and decisions from the discussion
 

@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+test "$(id -u)" -ne 0
+test ! -e /dev/fuse
+test "$(awk '/^CapEff:/ { print $2 }' /proc/self/status)" = 0000000000000000
+id
+git --version
+while IFS= read -r executable; do
+    "$executable" --test-threads=1
+done < /validation-tests
