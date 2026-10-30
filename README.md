@@ -12,7 +12,7 @@ namespaces, or mount permissions. macOS and Windows support are deferred.
 With the mise-managed toolchain installed (see development setup below):
 
 ```sh
-mise exec -- cargo install --locked --path . --bin git-commitfs
+mise exec -- just install-cli
 git commitfs run -- cargo test
 git-commitfs run -- cargo fmt --check
 git commitfs run --keep=on-failure -- cargo clippy -- -D warnings
@@ -54,14 +54,14 @@ input, but build changes remain disposable and do not update the source cache.
 Importing a large cache can be expensive; selective imports are deferred.
 Concurrent writes to source ignored files can produce a mixed copy or an error.
 
-| Option | Behavior |
-| --- | --- |
+| Option                       | Behavior                                                              |
+| ---------------------------- | --------------------------------------------------------------------- |
 | `--copy-mode=auto` (default) | Try reflinks; independently copy when unsupported or cross-filesystem |
-| `--copy-mode=copy` | Always independently copy ignored regular files |
-| `--copy-mode=reflink` | Require reflinks; fail when unavailable |
-| `--keep=never` (default) | Remove the workspace on success or failure |
-| `--keep=on-failure` | Keep after a nonzero command result, interruption, or setup error |
-| `--keep=always` | Keep on every outcome after workspace allocation |
+| `--copy-mode=copy`           | Always independently copy ignored regular files                       |
+| `--copy-mode=reflink`        | Require reflinks; fail when unavailable                               |
+| `--keep=never` (default)     | Remove the workspace on success or failure                            |
+| `--keep=on-failure`          | Keep after a nonzero command result, interruption, or setup error     |
+| `--keep=always`              | Keep on every outcome after workspace allocation                      |
 
 Copy mode affects imported ignored files only. Tracked files are materialized
 by Git into a fresh directory on every run; there is no persistent checkout cache.
@@ -102,13 +102,13 @@ detached processes, SIGKILL of the wrapper, and machine failures can leave files
 or processes behind; there is no automatic sweep of unknown temporary directories.
 `TMPDIR` must be outside the source checkout.
 
-| Exit code | Meaning |
-| --- | --- |
-| Command's exit code | Preserved, including 125 |
-| 2 | Invalid CLI usage |
-| 125 | Preparation, wrapper, or cleanup failure (diagnostic on stderr) |
-| 126 / 127 | Command not executable / not found |
-| 128 + signal | Command or wrapper interrupted by a signal |
+| Exit code           | Meaning                                                         |
+| ------------------- | --------------------------------------------------------------- |
+| Command's exit code | Preserved, including 125                                        |
+| 2                   | Invalid CLI usage                                               |
+| 125                 | Preparation, wrapper, or cleanup failure (diagnostic on stderr) |
+| 126 / 127           | Command not executable / not found                              |
+| 128 + signal        | Command or wrapper interrupted by a signal                      |
 
 A cleanup failure never masks a failed command's exit code; its diagnostic and
 retained path are still reported.
