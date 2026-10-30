@@ -1,0 +1,22 @@
+min_version = "2026.10.4"
+
+[vars]
+rustfmt_toolchain = "nightly-2026-10-30"
+
+[env]
+# hk's file discovery must not refresh the original index's stat cache.
+GIT_OPTIONAL_LOCKS = "0"
+
+[tools]
+fd = "10.5.0"
+hk = "2.10.0"
+just = "1.59.0"
+pkl = "0.32.2"
+rust = { version = "1.99.1", profile = "minimal", components = ["clippy", "rustfmt"] }
+tombi = "1.9.7"
+watchexec = "2.8.0"
+
+[tasks.rustfmt]
+hide = true
+tools.rust = { version = "{{ vars.rustfmt_toolchain }}", profile = "minimal", components = ["rustfmt"] }
+run = "cargo fmt --all"

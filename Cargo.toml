@@ -1,0 +1,27 @@
+[package]
+name = "git-commitfs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[lints.clippy]
+cognitive_complexity = "allow"
+manual_let_else = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+needless_collect = "warn"
+no_effect_underscore_binding = "allow"
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+redundant_type_annotations = "warn"
+single_match_else = "allow"
+uninlined_format_args = "allow"
+unnecessary_debug_formatting = "allow"
+unwrap_used = "warn"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1

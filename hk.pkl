@@ -1,0 +1,20 @@
+amends "package://github.com/jdx/hk/releases/download/v2.10.0/hk@2.10.0#/Config.pkl"
+
+hooks {
+    ["pre-commit"] {
+        fix = false
+        stage = false
+        stash = "none"
+        steps {
+            ["diff-hygiene"] {
+                check = "git diff --cached --check"
+            }
+            ["ascii-glyphs"] {
+                check = "scripts/check-ascii"
+            }
+            ["cargo"] {
+                check = "scripts/check-staged-tree"
+            }
+        }
+    }
+}

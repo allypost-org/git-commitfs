@@ -38,12 +38,24 @@ These additional failure conditions have explicit tests in the owning tasks:
 
 ## Current repository and file structure
 
-The repository contains a minimal `Cargo.toml`, `src/main.rs`, and `.gitignore`,
-all currently **untracked**. The approved design is committed. Inspect and
-preserve these starter files, any existing untracked `Cargo.lock`, and subsequent
-user changes when establishing the execution workspace; do not assume a new
-worktree contains the scaffold.
-Use explicit paths when staging implementation commits.
+The repository has a minimal Rust scaffold plus the development setup requested
+after design approval: `mise.toml`/`mise.lock`, `justfile`, `hk.pkl`, formatting
+configuration, `AGENTS.md`, and a development README. Read `AGENTS.md` before
+implementation and preserve any subsequent user changes. Use explicit paths
+when staging implementation commits.
+
+Tool versions are managed by mise. Bootstrap with `mise trust` and
+`mise exec -- just setup`. Prefer `mise exec -- just <recipe>` for work in an
+unactivated shell. `just fmt-dev` applies Clippy fixes followed by nightly Rust,
+stable Rust, and Tombi Cargo-manifest formatting. `just check` verifies the
+final stable Rust style, Cargo formatting, lockfile, Clippy, and tests; the staged
+hook also verifies the full modifying formatter pipeline leaves files unchanged.
+Keep version pins in mise rather than introducing another Rust toolchain file.
+
+`scripts/check-staged-tree` is a bootstrap hook helper, not a product backend.
+Leave it in place until the new CLI can run the equivalent staged checks; a
+later self-hosting change must preserve its Cargo-lock, lint, formatting,
+test, diff-hygiene, and no-formatting-changes checks.
 
 | File | Responsibility |
 | --- | --- |
@@ -380,7 +392,7 @@ choices. Signals must be handled throughout preparation and execution.
 
 ## Task 8: Document and verify the mount-free Linux release
 
-**Files:** Create `README.md`, `.github/workflows/ci.yml`;
+**Files:** Extend the development `README.md`; create `.github/workflows/ci.yml`;
 modify CLI help and existing integration tests only where documentation examples
 need automated coverage. Commit any resulting lockfile changes explicitly.
 
@@ -406,7 +418,11 @@ flags, configuration language, hook installer, or backend framework.
   formatter/version-bump command when users want persistent changes. Explain
   that absolute `CARGO_TARGET_DIR` values and escaping symlinks can write outside
   the workspace. Do not reuse the sample's shared writable `target` convention.
-  Configure CI to run formatting, clippy, and tests on Linux with stable Rust;
+  Configure CI to install the mise-pinned tools (including task tools) and run
+  `just check` on Linux, using stable Rust for builds/Clippy and the pinned
+  nightly for the first formatting pass followed by stable for the final layout.
+  In CI's clean checkout, also run `just fmt-dev` followed by
+  `git diff --exit-code` to enforce the complete formatting/fix pipeline;
   include an actual Git 2.43.x compatibility job, and a non-root restricted
   container job without `/dev/fuse`, added capabilities, or privileged mode.
   Pin action revisions and build images when implementing the workflow, and
@@ -414,11 +430,9 @@ flags, configuration language, hook installer, or backend framework.
 - [ ] **4. Run final checks:**
 
   ```sh
-  cargo fmt --all -- --check
-  cargo clippy --all-targets -- -D warnings
-  cargo test --all-targets
-  cargo build --release
-  cargo package --list
+  mise exec -- just check
+  mise exec -- just build
+  mise exec -- cargo package --list
   ```
 
   Expect exit 0 from each; inspect package contents for test fixtures and absence

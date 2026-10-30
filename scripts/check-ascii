@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C.UTF-8
+
+diff=$(git diff --cached --no-ext-diff --no-textconv --no-color --unified=0)
+hits=$(
+    printf '%s\n' "$diff" |
+        sed '/^+++ /d; /^+/!d' |
+        grep -nP '\x{2013}|\x{2014}|\x{2018}|\x{2019}|\x{201C}|\x{201D}|\x{2022}|\x{2026}|\x{2192}|\x{00A0}' || true
+)
+
+if [[ -n "$hits" ]]; then
+    printf '%s\n' "$hits" >&2
+    printf '%s\n' 'Typographic glyphs in added lines; see AGENTS.md style rules.' >&2
+    exit 1
+fi
