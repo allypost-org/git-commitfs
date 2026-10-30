@@ -34,6 +34,28 @@ pub fn materialize(candidate: &Candidate, run: &RunDirectory) -> Result<()> {
         external.as_os_str(),
     ])?;
     git.os_output(&["read-tree".as_ref(), &candidate.tree])?;
+    fs::write(
+        info.join("exclude"),
+        candidate
+            .ignores
+            .info_exclude
+            .as_deref()
+            .unwrap_or_default(),
+    )?;
+    let global_exclude = info.join("commitfs-ignore");
+    fs::write(
+        &global_exclude,
+        candidate
+            .ignores
+            .global_exclude
+            .as_deref()
+            .unwrap_or_default(),
+    )?;
+    git.os_output(&[
+        "config".as_ref(),
+        "core.excludesFile".as_ref(),
+        global_exclude.as_os_str(),
+    ])?;
     git.with_env("GIT_ATTR_SOURCE", candidate.tree.clone())
         .output(&[
             "checkout-index",

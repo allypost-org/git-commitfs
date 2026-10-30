@@ -23,6 +23,18 @@ pub enum Commands {
 
 #[derive(clap::Args)]
 pub struct RunOptions {
+    /// Include local ignored files using captured ignore rules; keep writes private.
+    #[arg(long)]
+    pub include_ignored: bool,
+
+    /// How to copy included ignored files; auto falls back to independent copies.
+    #[arg(long, value_enum, default_value_t = crate::copy::CopyMode::Auto)]
+    pub copy_mode: crate::copy::CopyMode,
+
+    /// Retain the disposable checkout for inspection; this never publishes writes.
+    #[arg(long, value_enum, default_value_t = crate::workspace::KeepPolicy::Never)]
+    pub keep: crate::workspace::KeepPolicy,
+
     /// Executable and arguments, passed directly without an implicit shell.
     #[arg(last = true, required = true, num_args = 1..)]
     pub argv: Vec<OsString>,

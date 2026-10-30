@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     ffi::OsString,
     fs::{self, File},
     io,
@@ -90,6 +91,14 @@ pub struct Candidate {
     pub tree: OsString,
     pub git: Git,
     pub checkout: CheckoutSettings,
+    pub tracked: HashSet<PathBuf>,
+    pub head_tracked: HashSet<PathBuf>,
+    pub ignores: IgnoreSettings,
+}
+
+pub struct IgnoreSettings {
+    pub info_exclude: Option<Vec<u8>>,
+    pub global_exclude: Option<Vec<u8>>,
 }
 
 pub struct CheckoutSettings {
@@ -135,16 +144,51 @@ pub fn capture(source: &SourceRepository, run: &RunDirectory) -> Result<Candidat
     borrowed.output(&["update-index", "--no-split-index"])?;
     validate_index(&borrowed)?;
     let tree = record(borrowed.output(&["write-tree"])?);
+    let tracked = paths(&borrowed.output(&["ls-files", "-z"])?);
+    let head_tracked =
+        match source
+            .git
+            .optional_output(&["rev-parse", "--verify", "--quiet", "HEAD"])?
+        {
+            Some(head) => paths(&borrowed.os_output(&[
+                "ls-tree".as_ref(),
+                "-r".as_ref(),
+                "--name-only".as_ref(),
+                "-z".as_ref(),
+                &record(head),
+            ])?),
+            None => HashSet::new(),
+        };
     let pack = run.scratch().join("candidate.pack");
     borrowed.pack(&tree, &pack)?;
     git.import_pack(&pack)?;
     fs::remove_file(pack)?;
     let checkout = checkout_settings(source)?;
+    let info = PathBuf::from(record(source.git.output(&[
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-path",
+        "info/exclude",
+    ])?));
+    let ignores = IgnoreSettings {
+        info_exclude: read_optional(&info)?,
+        global_exclude: external_rules(source, "core.excludesFile", "ignore")?,
+    };
     Ok(Candidate {
         tree,
         git,
         checkout,
+        tracked,
+        head_tracked,
+        ignores,
     })
+}
+
+fn paths(data: &[u8]) -> HashSet<PathBuf> {
+    data.split(|b| *b == 0)
+        .filter(|p| !p.is_empty())
+        .map(|p| PathBuf::from(OsString::from_vec(p.to_vec())))
+        .collect()
 }
 
 fn checkout_settings(source: &SourceRepository) -> Result<CheckoutSettings> {

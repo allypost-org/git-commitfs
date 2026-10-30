@@ -24,7 +24,7 @@ impl RunStatus {
 
 pub fn run_command(argv: &[OsString], cwd: &Path, env: &ChildEnvironment) -> Result<RunStatus> {
     let mut command = Command::new(&argv[0]);
-    command.args(&argv[1..]).current_dir(cwd);
+    command.args(&argv[1..]).current_dir(cwd).env("PWD", cwd);
     env.apply(&mut command);
     match command.status() {
         Ok(status) => Ok(status.code().map_or_else(
@@ -35,7 +35,10 @@ pub fn run_command(argv: &[OsString], cwd: &Path, env: &ChildEnvironment) -> Res
             eprintln!("git-commitfs: command not found: {:?}", argv[0]);
             Ok(RunStatus::NotFound)
         }
-        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+        Err(error)
+            if error.kind() == io::ErrorKind::PermissionDenied
+                || error.raw_os_error() == Some(libc::ENOEXEC) =>
+        {
             eprintln!("git-commitfs: command is not executable: {:?}", argv[0]);
             Ok(RunStatus::NotExecutable)
         }

@@ -103,6 +103,26 @@ impl Git {
         git
     }
 
+    pub fn input_output(&self, args: &[&str], input: Vec<u8>) -> Result<Output> {
+        let mut child = self
+            .command(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("start Git input query")?;
+        let mut pipe = child.stdin.take().context("Git query input")?;
+        let writer = std::thread::spawn(move || pipe.write_all(&input));
+        let output = child.wait_with_output().context("wait for Git query")?;
+        let written = writer
+            .join()
+            .map_err(|_| anyhow::anyhow!("Git input writer panicked"))?;
+        if output.status.success() || output.status.code() == Some(1) {
+            written.context("write Git query input")?;
+        }
+        Ok(output)
+    }
+
     pub fn pack(&self, tree: &OsStr, path: &Path) -> Result<()> {
         let mut command = self.command(["pack-objects", "--stdout", "--revs"]);
         command
