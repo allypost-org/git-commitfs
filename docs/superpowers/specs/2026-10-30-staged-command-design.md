@@ -1,6 +1,7 @@
 # git-commitfs: staged command execution
 
-Status: proposed design for review, not an implementation authorization.
+Status: approved by the user on 2026-10-30. Approval covers the design and
+writing the implementation plan, not starting product implementation.
 
 ## Intent and decisions from the discussion
 
