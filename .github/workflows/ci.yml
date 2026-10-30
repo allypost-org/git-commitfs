@@ -28,6 +28,16 @@ jobs:
           mise exec -- just fmt-dev
           git diff --exit-code
       - run: mise exec -- just build
+      - name: Verify the musl release binary is fully static
+        run: |
+          binary=target/x86_64-unknown-linux-musl/release/git-commitfs
+          file "$binary"
+          program_headers=$(readelf --program-headers --wide "$binary")
+          dynamic_entries=$(readelf --dynamic --wide "$binary")
+          if [[ "$program_headers" == *INTERP* || "$dynamic_entries" == *'(NEEDED)'* ]]; then
+            echo 'Release binary requires a dynamic loader or shared libraries' >&2
+            exit 1
+          fi
       - run: mise exec -- cargo package --list
 
   git-minimum:

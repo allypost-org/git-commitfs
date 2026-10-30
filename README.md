@@ -18,6 +18,17 @@ git-commitfs run -- cargo fmt --check
 git commitfs run --keep=on-failure -- cargo clippy -- -D warnings
 ```
 
+Linux v1 builds default to `x86_64-unknown-linux-musl`. `just build` produces a
+statically linked executable at
+`target/x86_64-unknown-linux-musl/release/git-commitfs`, with no dynamic loader or
+shared-library dependencies. You can copy it to another compatible x86-64 Linux
+system without installing a particular libc. Git >= 2.43 and the commands and
+filters you run must still be available there.
+
+`just install-cli` also selects musl explicitly. For a different target, pass
+`--target <triple>` to Cargo (or to `just build` / `just dev-build`) and install
+that target's standard library first. macOS and Windows support remain deferred.
+
 The binary works directly or as a Git subcommand. Commands start at the snapshot
 repository root, even when invoked from a subdirectory. Everything after `--`
 is passed as argv; use an explicit shell for pipelines or multiple commands:
@@ -142,9 +153,9 @@ mise exec -- just setup
 
 Tool versions are pinned in `mise.toml` and resolved in `mise.lock`. Stable Rust
 is used for builds/Clippy; the nightly formatter is separately managed through
-mise tasks. `just setup` installs both and enables hk for this clone, without
-changing global Git hooks. Outside an activated mise shell, prefix recipes with
-`mise exec --`.
+mise tasks. mise also installs the stable musl target. `just setup` installs both
+toolchains and enables hk for this clone, without changing global Git hooks.
+Outside an activated mise shell, prefix recipes with `mise exec --`.
 
 ```sh
 just dev-build
@@ -183,9 +194,10 @@ you want its output to persist in the working tree.
 ## Verification
 
 Linux CI runs the mise-managed checks, the complete nightly-then-stable formatter
-pipeline, a release build, and package inspection. Separate jobs run the suite
-with Git 2.43.7 and as a non-root user in a restricted container with no FUSE,
-capabilities, or network. Run the container check locally with Docker and Python 3:
+pipeline, a release build with ELF checks for static linking, and package inspection.
+Separate jobs run the suite with Git 2.43.7 and as a non-root user in a restricted
+container with no FUSE, capabilities, or network. Run the container check locally
+with Docker and Python 3:
 
 ```sh
 mise exec -- bash scripts/test-restricted

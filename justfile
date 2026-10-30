@@ -70,4 +70,4 @@ check-staged:
     hk run pre-commit
 
 install-cli:
-    cargo install --locked --path . --bin git-commitfs
+    cargo install --locked --path . --bin git-commitfs --target x86_64-unknown-linux-musl

@@ -54,6 +54,7 @@ specifiers = ["1.99.1"]
 [tools.rust.options]
 components = "clippy,rustfmt"
 profile = "minimal"
+targets = "x86_64-unknown-linux-musl"
 
 [[tools.rust]]
 version = "nightly-2026-10-30"

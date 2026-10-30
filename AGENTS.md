@@ -17,6 +17,11 @@ Git fixtures; `tests/acceptance.rs` also exercises real hooks and partial commit
   `mise.lock` records resolutions. Do not duplicate pins in another toolchain file.
 - Stable Rust builds, tests, and runs Clippy. A separately pinned nightly runs
   rustfmt because the import/string formatting settings require nightly.
+- Linux v1 defaults to `x86_64-unknown-linux-musl` in `.cargo/config.toml`.
+  mise installs that target for stable Rust. Release output is
+  `target/x86_64-unknown-linux-musl/release/git-commitfs`, statically linked;
+  `just install-cli` explicitly selects musl because Cargo install ignores the
+  normal build-target default. Keep CI's ELF static-link checks in place.
 - mise manages Rust, nightly rustfmt, just, hk, Pkl, Tombi, fd, and watchexec.
   Git >= 2.43, Bash, and standard Linux utilities are system prerequisites.
 - Bootstrap with `mise trust` and `mise exec -- just setup`. This installs

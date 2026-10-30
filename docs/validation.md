@@ -1,5 +1,19 @@
 # Local validation
 
+## Static Linux build follow-up
+
+The default target is now `x86_64-unknown-linux-musl`, installed by mise for the
+pinned stable toolchain. `mise exec -- just build` produces
+`target/x86_64-unknown-linux-musl/release/git-commitfs`. `file` identifies it as
+static PIE; `readelf --program-headers --wide` has no `INTERP` entry and
+`readelf --dynamic --wide` has no `NEEDED` entries. CI enforces both ELF checks.
+The installed executable from `just install-cli` was also checked in a temporary
+install root. Git and user commands remain external runtime dependencies.
+
+`mise exec -- just check` and the restricted non-root container check both pass
+all 65 tests with musl, including signals and PTY interaction. The original
+validation and measurements below predate this target change.
+
 Validated on 2026-10-30. Hosted GitHub Actions jobs are configured but have not
 been run remotely. The checks below were executed locally against the implementation.
 
