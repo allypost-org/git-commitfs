@@ -130,7 +130,7 @@ impl Repo {
             .expect("run git-commitfs")
     }
 
-    pub fn source_state(&self) -> Vec<(PathBuf, Vec<u8>, u32)> {
+    pub fn source_state(&self) -> Vec<(PathBuf, Vec<u8>, u32, std::time::SystemTime)> {
         let mut result = Vec::new();
         collect_state(&self.root, &self.root, &mut result);
         result.sort();
@@ -138,7 +138,11 @@ impl Repo {
     }
 }
 
-fn collect_state(root: &Path, dir: &Path, result: &mut Vec<(PathBuf, Vec<u8>, u32)>) {
+fn collect_state(
+    root: &Path,
+    dir: &Path,
+    result: &mut Vec<(PathBuf, Vec<u8>, u32, std::time::SystemTime)>,
+) {
     for item in fs::read_dir(dir).expect("read fixture directory") {
         let path = item.expect("directory entry").path();
         let meta = fs::symlink_metadata(&path).expect("fixture metadata");
@@ -158,6 +162,7 @@ fn collect_state(root: &Path, dir: &Path, result: &mut Vec<(PathBuf, Vec<u8>, u3
                 path.strip_prefix(root).expect("relative path").to_owned(),
                 content,
                 meta.permissions().mode(),
+                meta.modified().expect("fixture mtime"),
             ));
         }
     }

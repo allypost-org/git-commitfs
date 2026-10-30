@@ -101,6 +101,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_successful_clone_is_not_followed_by_a_copy() {
+        let dir = tempfile::tempdir().expect("copy fixture");
+        let source = dir.path().join("source");
+        let destination = dir.path().join("destination");
+        fs::write(&source, b"original").expect("source");
+        regular_file_with(
+            &source,
+            &destination,
+            CopyMode::Auto,
+            |mut input, mut output| {
+                io::copy(&mut input, &mut output)?;
+                // Changing the input after the injected clone exposes an accidental second copy.
+                fs::write(&source, b"changed")?;
+                Ok(())
+            },
+        )
+        .expect("successful clone policy");
+        assert_eq!(fs::read(destination).expect("clone result"), b"original");
+    }
+
+    #[test]
     fn partial_clone_is_truncated_before_fallback() {
         let dir = tempfile::tempdir().expect("copy fixture");
         let source = dir.path().join("source");

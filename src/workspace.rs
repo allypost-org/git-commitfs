@@ -1,5 +1,6 @@
 use std::{
-    fs,
+    fs, io,
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
 
@@ -56,7 +57,7 @@ impl RunDirectory {
 
     pub fn clear_scratch(&self) -> Result<()> {
         if self.scratch.exists() {
-            fs::remove_dir_all(&self.scratch).context("remove capture scratch data")?;
+            remove_owned_tree(&self.scratch).context("remove capture scratch data")?;
         }
         Ok(())
     }
@@ -76,7 +77,7 @@ impl RunDirectory {
                 cleanup_error: cleared.err(),
             }
         } else {
-            match fs::remove_dir_all(&root) {
+            match remove_owned_tree(&root) {
                 Ok(()) => Finalization {
                     retained: None,
                     cleanup_error: None,
@@ -91,4 +92,30 @@ impl RunDirectory {
             }
         }
     }
+}
+
+fn remove_owned_tree(path: &Path) -> io::Result<()> {
+    match fs::remove_dir_all(path) {
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+            // Imported directories and command output may be read-only. Only relax owned
+            // disposable directories, never files or symlink targets, before retrying.
+            make_directories_removable(path)?;
+            fs::remove_dir_all(path)
+        }
+        result => result,
+    }
+}
+
+fn make_directories_removable(path: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.is_dir() {
+        fs::set_permissions(
+            path,
+            fs::Permissions::from_mode(metadata.permissions().mode() | 0o700),
+        )?;
+        for entry in fs::read_dir(path)? {
+            make_directories_removable(&entry?.path())?;
+        }
+    }
+    Ok(())
 }

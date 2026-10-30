@@ -2,6 +2,7 @@
 name = "git-commitfs"
 version = "0.1.0"
 edition = "2024"
+description = "Run commands against a disposable checkout of the Git index"
 
 [dependencies]
 anyhow = "1.0.104"

@@ -53,11 +53,37 @@ fn split_index_is_read_without_refreshing_shared_source_data() {
     repo.write("file", b"staged");
     repo.git(&["add", "."]);
     repo.git(&["update-index", "--split-index"]);
+    let shared: Vec<_> = fs::read_dir(repo.root.join(".git"))
+        .expect("Git directory")
+        .map(|entry| entry.expect("Git entry").path())
+        .filter(|path| {
+            path.file_name()
+                .expect("filename")
+                .as_encoded_bytes()
+                .starts_with(b"sharedindex.")
+        })
+        .collect();
+    let old_time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+    for path in &shared {
+        fs::File::open(path)
+            .expect("shared index")
+            .set_times(fs::FileTimes::new().set_modified(old_time))
+            .expect("set old shared-index mtime");
+    }
     let before = repo.source_state();
     let output = repo.run(&["run", "--", "cat", "file"]);
     assert_success(&output);
     assert_eq!(output.stdout, b"staged");
     assert_eq!(repo.source_state(), before);
+    for path in shared {
+        assert_eq!(
+            fs::metadata(path)
+                .expect("shared metadata")
+                .modified()
+                .expect("mtime"),
+            old_time
+        );
+    }
 }
 
 #[test]
@@ -101,6 +127,12 @@ fn sparse_index_still_materializes_the_entire_tree() {
     repo.git(&["sparse-checkout", "init", "--cone", "--sparse-index"]);
     repo.git(&["sparse-checkout", "set", "visible"]);
     assert!(!repo.root.join("hidden/b").exists());
+    let before = repo.source_state();
+    let output = repo.run(&["run", "--", "cat", "hidden/b"]);
+    assert_success(&output);
+    assert_eq!(output.stdout, b"hidden");
+    assert_eq!(repo.source_state(), before);
+    repo.write("hidden/b", b"unstaged outside the sparse cone");
     let before = repo.source_state();
     let output = repo.run(&["run", "--", "cat", "hidden/b"]);
     assert_success(&output);
@@ -233,4 +265,103 @@ fn later_staging_does_not_change_a_running_candidate() {
     std::io::Read::read_to_end(&mut output, &mut remaining).expect("read result");
     assert!(child.wait().expect("child status").success());
     assert_eq!(remaining, b"captured");
+}
+
+#[test]
+fn renames_type_changes_and_unstaged_missing_files_come_from_the_index() {
+    let repo = Repo::new();
+    repo.write("old", b"renamed");
+    repo.write("kind", b"ordinary file");
+    repo.write("missing", b"restored");
+    repo.commit_all();
+    repo.git(&["mv", "old", "new"]);
+    fs::remove_file(repo.root.join("kind")).expect("old type");
+    std::os::unix::fs::symlink("new", repo.root.join("kind")).expect("new symlink");
+    repo.git(&["add", "kind"]);
+    fs::remove_file(repo.root.join("missing")).expect("unstaged deletion");
+    let before = repo.source_state();
+    let output = repo.run(&[
+        "run",
+        "--",
+        "sh",
+        "-c",
+        "set -e; test ! -e old; test -L kind; cat kind missing; test -z \"$(git status \
+         --porcelain)\"",
+    ]);
+    assert_success(&output);
+    assert_eq!(output.stdout, b"renamedrestored");
+    assert_eq!(repo.source_state(), before);
+}
+
+#[test]
+fn missing_objects_do_not_fetch_from_a_source_promisor_remote() {
+    let repo = Repo::new();
+    repo.write("file", b"missing locally");
+    repo.git(&["add", "."]);
+    let oid = String::from_utf8(repo.git(&["rev-parse", ":file"]).stdout).expect("object ID");
+    let oid = oid.trim();
+    fs::remove_file(
+        repo.root
+            .join(".git/objects")
+            .join(&oid[..2])
+            .join(&oid[2..]),
+    )
+    .expect("remove blob");
+    repo.git(&["config", "remote.origin.promisor", "true"]);
+    repo.git(&["config", "extensions.partialClone", "origin"]);
+    repo.git(&["config", "protocol.ext.allow", "always"]);
+    let helper = repo.storage.path().join("fetch-helper");
+    fs::write(&helper, b"#!/bin/sh\ntouch \"$FETCH_MARKER\"\nexit 1\n").expect("fetch helper");
+    fs::set_permissions(&helper, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+        .expect("executable fetch helper");
+    repo.git(&[
+        "config",
+        "remote.origin.url",
+        &format!("ext::{}", helper.display()),
+    ]);
+    let marker = repo.storage.path().join("fetch-marker");
+    let before = repo.source_state();
+    let output = repo
+        .run_command()
+        .env("FETCH_MARKER", &marker)
+        .args(["run", "--", "printf", "must not run"])
+        .output()
+        .expect("missing object run");
+    assert_failure(&output, 125, "Git");
+    assert_eq!(output.stdout, [] as [u8; 0]);
+    assert!(
+        !marker.exists(),
+        "preparation invoked a source promisor remote"
+    );
+    assert_eq!(repo.source_state(), before);
+}
+
+#[test]
+fn relative_environment_object_alternates_keep_their_source_meaning() {
+    let repo = Repo::new();
+    repo.write("file", b"from alternate objects");
+    repo.git(&["add", "."]);
+    let objects = repo.storage.path().join("alternate-objects");
+    fs::rename(repo.root.join(".git/objects"), &objects).expect("move source objects");
+    fs::create_dir(repo.root.join(".git/objects")).expect("empty source object store");
+    fs::create_dir(repo.root.join("sub")).expect("source subdirectory");
+    let mut source_git = repo.command("git");
+    let output = source_git
+        .current_dir(repo.root.join("sub"))
+        .env("GIT_ALTERNATE_OBJECT_DIRECTORIES", "../alternate-objects")
+        .args(["show", ":file"])
+        .output()
+        .expect("Git with relative alternate");
+    assert_success(&output);
+    let before = repo.source_state();
+    let output = repo
+        .run_command()
+        .current_dir(repo.root.join("sub"))
+        .env("GIT_ALTERNATE_OBJECT_DIRECTORIES", "../alternate-objects")
+        .args(["run", "--", "cat", "file"])
+        .output()
+        .expect("relative alternate capture");
+    assert_success(&output);
+    assert_eq!(output.stdout, b"from alternate objects");
+    assert_eq!(repo.source_state(), before);
 }

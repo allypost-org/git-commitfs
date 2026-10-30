@@ -109,9 +109,7 @@ impl Git {
             .capture(&mut self.command(args), Some(input), None)
     }
 
-    pub fn pack(&self, tree: &OsStr, path: &Path) -> Result<()> {
-        let mut input = tree.as_encoded_bytes().to_vec();
-        input.push(b'\n');
+    pub fn pack(&self, input: Vec<u8>, path: &Path) -> Result<()> {
         let output = self.supervisor.capture(
             &mut self.command(["pack-objects", "--stdout", "--revs"]),
             Some(input),

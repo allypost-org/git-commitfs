@@ -22,6 +22,11 @@ pub enum Commands {
 }
 
 #[derive(clap::Args)]
+#[command(
+    after_help = "Commands start at the snapshot root. All workspace writes, including ignored \
+                  files, are disposable. This is not a security sandbox: absolute paths, escaping \
+                  symlinks, and environment variables can still write elsewhere."
+)]
 pub struct RunOptions {
     /// Include local ignored files using captured ignore rules; keep writes private.
     #[arg(long)]

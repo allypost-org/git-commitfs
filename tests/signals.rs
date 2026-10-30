@@ -170,6 +170,11 @@ fn termination_signals_stop_descendants_and_clean_the_workspace() {
         let repo = Repo::new();
         let mut child = Managed::spawn(repo.run_command().args([
             "run",
+            if signal == libc::SIGHUP {
+                "--keep=on-failure"
+            } else {
+                "--keep=never"
+            },
             "--",
             "sh",
             "-c",
@@ -181,7 +186,11 @@ fn termination_signals_stop_descendants_and_clean_the_workspace() {
         child.signal(signal);
         assert_eq!(child.wait().code(), Some(128 + signal));
         assert!(!alive(worker), "worker survived signal forwarding");
-        assert!(!path.exists(), "workspace was not removed");
+        assert_eq!(
+            path.exists(),
+            signal == libc::SIGHUP,
+            "interrupted retention policy"
+        );
     }
 }
 

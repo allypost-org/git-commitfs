@@ -100,6 +100,12 @@ fn statuses_and_command_errors_are_preserved() {
         let output = repo.run(&["run", "--", "sh", "-c", &format!("exit {code}")]);
         assert_eq!(output.status.code(), Some(code));
     }
+    assert_eq!(
+        repo.run(&["run", "--", "sh", "-c", "kill -TERM $$"])
+            .status
+            .code(),
+        Some(143)
+    );
     assert_failure(
         &repo.run(&["run", "--", "git-commitfs-missing-executable-941251"]),
         127,

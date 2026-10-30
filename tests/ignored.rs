@@ -205,9 +205,31 @@ fn unreadable_eligible_files_fail_before_execution() {
         fs::Permissions::from_mode(0o0),
     )
     .expect("unreadable cache");
+    if fs::File::open(repo.root.join("target/cache")).is_ok() {
+        eprintln!("skipping unreadable-file assertion: this user can read mode-000 files");
+        return;
+    }
     let output = repo.run(&["run", "--include-ignored", "--", "printf", "should not run"]);
     assert_failure(&output, 125, "target/cache");
     assert_eq!(output.stdout, [] as [u8; 0]);
+}
+
+#[test]
+fn read_only_imported_directories_are_cleaned_without_changing_source_modes() {
+    let repo = ignored_repo();
+    let directory = repo.root.join("target");
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o555)).expect("read-only cache");
+    let output = repo.run(&["run", "--include-ignored", "--", "pwd"]);
+    let source_mode = fs::metadata(&directory)
+        .expect("source directory metadata")
+        .permissions()
+        .mode();
+    // Restore fixture permissions even if the assertion fails.
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).expect("restore fixture");
+    assert_success(&output);
+    assert_eq!(source_mode & 0o777, 0o555);
+    let path = String::from_utf8(output.stdout).expect("workspace path");
+    assert!(!std::path::Path::new(path.trim_end()).exists());
 }
 
 #[test]
