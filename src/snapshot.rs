@@ -153,10 +153,10 @@ pub fn capture(source: &SourceRepository, run: &RunDirectory) -> Result<Candidat
             None => HashSet::new(),
         };
     let pack = run.scratch().join("candidate.pack");
-    // Sparse expansion can write trees and freshen objects in alternates even
-    // in read-only Git commands. Import sparse trees and blobs without expansion,
-    // then do all validation/normalization against independent object storage.
-    let entries = borrowed.output(&["ls-files", "--stage", "--sparse", "-z"])?;
+    // Git can write trees even while listing an index. Interpret it without
+    // source alternates so sparse expansion/contraction cannot freshen source
+    // objects. Borrow objects only for the subsequent graph export.
+    let entries = git.output(&["ls-files", "--stage", "--sparse", "-z"])?;
     borrowed.pack(staged_roots(&entries)?, &pack)?;
     git.import_pack(&pack)?;
     fs::remove_file(pack)?;

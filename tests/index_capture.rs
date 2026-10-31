@@ -365,3 +365,18 @@ fn relative_environment_object_alternates_keep_their_source_meaning() {
     assert_eq!(output.stdout, b"from alternate objects");
     assert_eq!(repo.source_state(), before);
 }
+
+#[test]
+fn listing_a_full_index_does_not_freshen_unchanged_source_subtrees() {
+    let repo = Repo::new();
+    repo.write("unchanged/file", b"unchanged tree");
+    repo.write("changed", b"base");
+    repo.commit_all();
+    repo.write("changed", b"staged");
+    repo.git(&["add", "changed"]);
+    let before = repo.source_state();
+    let output = repo.run(&["run", "--", "cat", "changed", "unchanged/file"]);
+    assert_success(&output);
+    assert_eq!(output.stdout, b"stagedunchanged tree");
+    assert_eq!(repo.source_state(), before);
+}

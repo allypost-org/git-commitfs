@@ -169,28 +169,36 @@ just check-staged  # The pre-commit checks, against the index
 just dev-watch
 ```
 
-`just fmt-cargo` and `just fmt-cargo-check` find every non-ignored `Cargo.toml`
-with fd and pass paths directly to Tombi, including paths containing spaces.
-The nightly Rust formatting pass applies the nightly-only options in
-`rustfmt.toml`, then the stable pass applies `rustfmt-stable.toml`. The read-only
-Rust check validates the final stable layout; the staged hook additionally checks
-that the full nightly-then-stable `fmt-dev` pipeline leaves files unchanged.
+`just fmt-toml` and `just fmt-toml --check` format and check TOML files with
+Tombi. The nightly Rust pass applies the nightly-only options in `rustfmt.toml`,
+then stable rustfmt determines the final layout using its supported settings.
+`just fmt-stable --check` verifies that final layout; the staged hook additionally
+checks that the full nightly-then-stable `fmt-dev` pipeline leaves files unchanged.
 
 ## Pre-commit checks
 
 hk checks diff hygiene and decorative typographic glyphs. Rust/manifests/tooling
-changes also trigger checks against a fresh disposable checkout of the index:
-Cargo.lock synchronization, Clippy, Rust formatting, Tombi Cargo formatting,
-tests, and verification that `just fmt-dev` leaves that checkout unchanged.
-hk neither stashes nor stages changes. Unstaged/untracked source files do not
-enter the temporary checkout. The helper uses `target/hk` as an ignored build
-cache for read-only checks; the fix pass uses separate temporary build output.
-Temporary snapshots and fix artifacts are removed on exit.
+changes, including staged deletions, trigger the self-hosted staged check:
 
-The bootstrap script borrows source Git objects and has intentionally narrower
-compatibility than the CLI. Migrating these development hooks to the new binary
-is a separate self-hosting change. Run a separate normal formatter/version-bump command when
-you want its output to persist in the working tree.
+1. `scripts/check-staged-tree` finds a working `git-commitfs` on PATH. If none is
+   available, it builds a debug binary into `target/hk-bootstrap` using mise and
+   the pinned musl target. Cargo reuses those build artifacts on later runs.
+2. The wrapper invokes `git-commitfs run -- bash scripts/check-hook-workspace ...`.
+   The app captures the effective index and creates the independent checkout.
+3. The helper from that staged checkout runs `just check`, then `just fmt-dev`.
+   It rejects tracked/index changes or non-ignored untracked files left by the
+   modifying pass. These changes stay disposable.
+
+hk neither stashes nor stages changes. Unstaged/untracked source files do not
+enter the checks. The fallback bootstrap compiles the current working tree, so
+it needs that tree to build; install a working CLI with `just install-cli` to
+avoid bootstrap compilation during hooks.
+
+The read-only pass explicitly uses `target/hk` as an ignored compiler cache.
+The modifying pass uses fresh build output inside the disposable Git directory,
+which the app removes with the checkout, including after interruption. This hook
+cache choice does not change the CLI's default isolation. Run a separate normal
+formatter/version-bump command when you want its output to persist.
 
 ## Verification
 

@@ -31,7 +31,9 @@ using distro Git 2.43.0. The release build, package inspection, formatter pipeli
 Clippy, actionlint, and shellcheck were checked locally. Hosted CI has been
 configured but has not run remotely. See [validation notes](../../validation.md)
 for commands, environment, measurements, and capability-dependent limitations.
-The bootstrap hk helper remains in place pending a separate self-hosting change.
+The subsequent self-hosting change keeps a small hk bootstrap wrapper and delegates
+checkout preparation and lifetime to git-commitfs; `scripts/check-hook-workspace`
+runs the staged validation pipeline. See the validation notes for that follow-up.
 
 ## Global Constraints
 

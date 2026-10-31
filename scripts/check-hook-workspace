@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if (( $# != 1 )); then
+    printf '%s\n' 'usage: scripts/check-hook-workspace <compiler-cache>' >&2
+    exit 2
+fi
+
+export CARGO_TARGET_DIR="$1"
+printf '%s\n' '==> staged Cargo.lock, Clippy, Rust/Cargo format checks, and tests'
+mise exec -- just check
+
+printf '%s\n' '==> fmt-dev must not change the staged checkout'
+# The modifying pass needs fresh artifacts. Keeping them in private Git storage
+# also gives git-commitfs ownership of cleanup after interruption.
+private_git=$(git rev-parse --absolute-git-dir)
+export CARGO_TARGET_DIR="$private_git/hook-fix-target"
+mise exec -- just fmt-dev
+if ! git diff --no-ext-diff --no-textconv --exit-code HEAD -- \
+    || ! git diff --no-ext-diff --no-textconv --cached --exit-code --; then
+    printf '%s\n' 'just fmt-dev changes staged files; run it in the checkout and stage the result.' >&2
+    exit 1
+fi
+git ls-files --others --exclude-standard -z >"$private_git/hook-untracked"
+if [[ -s "$private_git/hook-untracked" ]]; then
+    printf '%s\n' 'just fmt-dev created untracked files in the staged checkout.' >&2
+    exit 1
+fi

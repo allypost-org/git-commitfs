@@ -33,12 +33,11 @@ Git fixtures; `tests/acceptance.rs` also exercises real hooks and partial commit
 - `just dev-watch [args...]` / `just dev-watch-build`: watch source/manifests.
 - `just test [args...]`: all targets/features, with Cargo.lock locked.
 - `just fmt-dev`: canonical modifying lint/format command: Clippy fixes, nightly
-  Rust formatting, stable Rust formatting, and Tombi formatting of every
-  non-ignored Cargo manifest, in that order. The nightly pass applies
-  `rustfmt.toml`; the stable pass uses `rustfmt-stable.toml` and determines the
-  final Rust layout. The staged hook verifies the complete pipeline leaves files
-  unchanged, including the nightly pre-pass; `fmt-rust-check` checks the final
-  stable layout.
+  Rust formatting, stable Rust formatting, and Tombi TOML formatting, in that
+  order. The nightly pass applies the nightly-only settings in `rustfmt.toml`;
+  stable rustfmt determines the final layout using its supported settings. The
+  staged hook verifies the complete pipeline leaves files unchanged, including
+  the nightly pre-pass; `just fmt-stable --check` checks the final stable layout.
 - `just check`: read-only lockfile, Clippy, Rust/Cargo formatting, and test checks.
 - `just check-staged`: run the pre-commit checks against the current index.
 - `just install-cli`: install this package's release binary.
@@ -50,22 +49,28 @@ Run relevant tests once they exist; do not describe an empty test run as coverag
 ## Hooks and staged content
 
 `hk.pkl` runs diff hygiene, the typographic-glyph check, and staged Cargo checks.
-hk does not stash, fix, or stage files. `scripts/check-staged-tree` is a temporary
-bootstrap helper, to be replaced by git-commitfs after its staged-run contract
-works. It creates a fresh index checkout per run, checks Cargo.lock, Clippy,
-Rust/Cargo formatting and tests, and verifies `just fmt-dev` changes no
-tracked files or creates untracked files. Staged deletions and changes to tooling
-also trigger the Cargo checks. Source index/working files are not formatted.
-The mise environment disables Git's optional index refreshes, including during
-hk's file discovery; mandatory locks for staging/committing still apply.
+hk does not stash, fix, or stage files. `scripts/check-staged-tree` selects an
+installed `git-commitfs` from PATH and delegates snapshot ownership to
+`git-commitfs run`. When no working executable is available (including a dangling
+mise shim), it builds the current working tree with mise-selected stable Cargo
+into the ignored `target/hk-bootstrap` cache. That bootstrap build needs a
+compilable working tree; installing a working CLI avoids that dependency.
 
-The helper borrows Git objects while it runs and uses `target/hk` as an ignored
-compiler cache for read-only checks. The modifying fix pass gets fresh temporary
-build output so compiler-cache wrappers cannot leave it read-only artifacts.
-It is not the full product backend and does not claim the
-product's history/filter/submodule compatibility. Do not expand it into a second
-implementation of git-commitfs. Use `HK=0 git commit` or `--no-verify` only when
-an intentional hook bypass is needed, and explain the reason.
+`scripts/check-hook-workspace` is executed from the captured index inside the
+app's disposable checkout. It runs `just check`, then `just fmt-dev`, rejecting
+tracked/index changes and non-ignored untracked additions. Staged deletions and
+tooling changes also trigger these checks. The app honors an alternate index
+supplied by Git, keeps checkout/index writes private, and owns cleanup. The mise
+environment disables Git's optional index refreshes, including during hk's file
+discovery; mandatory locks for staging/committing still apply.
+
+The hook explicitly uses `target/hk` as an ignored compiler cache for read-only
+checks. The modifying fix pass gets fresh output under the disposable `.git`
+directory so compiler-cache wrappers cannot leave it read-only artifacts.
+This is a development-hook choice, not product-level source-cache sharing.
+Keep the wrapper free of index-copy/checkout/object-store plumbing; the app is
+the single implementation. Use `HK=0 git commit` or `--no-verify` only when an
+intentional hook bypass is needed, and explain the reason.
 
 ## Style
 

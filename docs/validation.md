@@ -1,5 +1,34 @@
 # Local validation
 
+## Self-hosted staged checks
+
+The hk staged check now delegates checkout creation and cleanup to
+`git-commitfs run`. The wrapper selects an installed executable or builds a
+musl debug binary in `target/hk-bootstrap`; the staged
+`scripts/check-hook-workspace` runs the validation and modifying formatter passes.
+The latter pass has fresh build output inside the disposable Git directory.
+
+Local verification on 2026-10-31 covers `just check` (74 tests), the restricted
+non-root container suite with Git 2.43.0, the release build, ShellCheck, and the
+real hk `just check-staged` pipeline using the freshly built CLI on PATH. A
+separate real invocation with no installed CLI on PATH successfully compiled
+the bootstrap binary and completed the same checks.
+
+Regression tests cover installed/built executables, a dangling mise shim,
+partial staging, alternate indexes, relative Git routing from subdirectories,
+staged deletions, documentation-only skips, paths ending in newlines, and
+formatter changes to tracked/index/untracked files.
+The toolchain is substituted only in these focused fixtures so they do not
+recursively run the suite and can run without Rust/mise in the restricted image.
+The complete toolchain was exercised by the real hook runs above.
+
+Self-hosting exposed Git contracting a full index while listing it and refreshing
+unchanged source tree-object mtimes through alternates. Index listing now runs
+without source alternates; graph export borrows them afterward. A direct
+regression compares all source bytes, modes, and file mtimes. Code review also
+caught index-only formatter changes canceled by restored working bytes; separate
+working-content and cached diffs now reject that case.
+
 ## CI mise version fix
 
 The [first hosted run](https://github.com/allypost-org/git-commitfs/actions/runs/41193837453)
