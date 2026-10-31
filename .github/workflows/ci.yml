@@ -15,10 +15,11 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
         with:
-          version: 2026.10.4
+          version: 2026.10.24
           install_args: --include-task-tools
       - name: Record tool versions
         run: |
+          mise --version
           git --version
           mise exec -- rustc --version
           mise exec -- cargo --version
@@ -47,7 +48,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
         with:
-          version: 2026.10.4
+          version: 2026.10.24
           install_args: --include-task-tools
       - name: Build the minimum supported Git series
         working-directory: ${{ runner.temp }}
@@ -70,7 +71,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
         with:
-          version: 2026.10.4
+          version: 2026.10.24
           install_args: --include-task-tools
       - name: Test as non-root without capabilities, network, or FUSE
         run: |

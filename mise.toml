@@ -1,4 +1,5 @@
-min_version = "2026.10.4"
+# Keep the mise-action version in CI aligned with this lockfile writer.
+min_version = "2026.10.24"
 
 [vars]
 rustfmt_toolchain = "nightly-2026-10-30"

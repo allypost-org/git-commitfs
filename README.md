@@ -143,8 +143,9 @@ record the scope and deferred optimizations.
 
 ## Development setup
 
-Install [mise](https://mise.jdx.dev/), Git >= 2.43, Bash, and the usual Linux build
-tools. Then run:
+Install [mise](https://mise.jdx.dev/) >= 2026.10.24, Git >= 2.43, Bash, and the
+usual Linux build tools. The CI mise version matches the project's minimum so
+older lockfile writers cannot strip tool metadata or task-scoped tools. Then run:
 
 ```sh
 mise trust
