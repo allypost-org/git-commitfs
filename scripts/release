@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Bump the version, commit it and create the annotated release tag locally.
+# Pushing the tag is what triggers .github/workflows/release.yml, so this
+# script deliberately does not push.
+#
+# Usage: scripts/release <version>   (for example: scripts/release 0.2.0)
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+version=${1:?usage: release <version> (for example 0.2.0)}
+version=${version#v}
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    echo "Not a plain semver version: $version" >&2
+    exit 2
+fi
+tag=v$version
+
+branch=$(git symbolic-ref --short HEAD)
+if [[ "$branch" != main ]]; then
+    echo "Releases are cut from main, not $branch" >&2
+    exit 1
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo 'Working tree is not clean' >&2
+    exit 1
+fi
+if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+    echo "Tag $tag already exists" >&2
+    exit 1
+fi
+
+# Replace only the [package] version line.
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+awk -v version="$version" '
+    /^\[/ { in_package = ($0 == "[package]") }
+    in_package && /^version = / && !done { print "version = \"" version "\""; done = 1; next }
+    { print }
+' Cargo.toml >"$tmp"
+cat "$tmp" >Cargo.toml
+cargo update --workspace --offline --quiet
+
+git add Cargo.toml Cargo.lock
+git commit --message "release: $tag"
+git tag --annotate "$tag" --message "$tag"
+
+echo
+echo "Created $tag. To publish the release:"
+echo "    git push origin main $tag"

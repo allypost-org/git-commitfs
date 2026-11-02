@@ -48,6 +48,11 @@ Git fixtures; `tests/acceptance.rs` also exercises real hooks and partial commit
 - `just check`: read-only lockfile, Clippy, Rust/Cargo formatting, and test checks.
 - `just check-staged`: run the pre-commit checks against the current index.
 - `just install-cli`: install this package's release binary.
+- `just package`: build and package the selected target's release archive into `dist/`.
+- `just release <version>`: bump the version, commit and tag locally; never pushes.
+  Pushing the tag runs `.github/workflows/release.yml`. The archive name and layout
+  in `scripts/package-release` must stay in sync with `[package.metadata.binstall]`
+  in `Cargo.toml`, since cargo-binstall and mise locate downloads by that name.
 
 Use `just fmt-dev` for routine formatting/fixes. Keep the read-only recipes
 available for verification; do not substitute a modifying formatter in CI/hooks.

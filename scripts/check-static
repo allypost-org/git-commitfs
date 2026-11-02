@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Fail if an ELF binary needs a dynamic loader or shared libraries.
+set -euo pipefail
+
+binary=${1:?usage: check-static <elf-binary>}
+file "$binary"
+program_headers=$(readelf --program-headers --wide "$binary")
+dynamic_entries=$(readelf --dynamic --wide "$binary")
+if [[ "$program_headers" == *INTERP* || "$dynamic_entries" == *'(NEEDED)'* ]]; then
+    echo 'Release binary requires a dynamic loader or shared libraries' >&2
+    exit 1
+fi
