@@ -103,4 +103,4 @@ check-staged:
     hk run pre-commit
 
 install-cli *args:
-    cargo install --locked --path . --bin git-commitfs --target x86_64-unknown-linux-musl "$@"
+    cargo install --locked --path . --bin git-commitfs --target "${CARGO_BUILD_TARGET:-$(rustc --print host-tuple)}" "$@"

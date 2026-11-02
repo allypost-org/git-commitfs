@@ -1,7 +1,6 @@
 use std::{
     collections::HashSet,
     fs,
-    os::unix::{ffi::OsStringExt, fs::symlink},
     path::{Path, PathBuf},
 };
 
@@ -51,7 +50,7 @@ pub fn import(
         .filter(|p| !p.is_empty())
         .map(|p| {
             let path = p.strip_suffix(b"/").unwrap_or(p);
-            PathBuf::from(std::ffi::OsString::from_vec(path.to_vec()))
+            PathBuf::from(crate::platform::fs::os_string(path.to_vec()))
         })
         .collect();
     let mut directory_modes = Vec::new();
@@ -147,7 +146,7 @@ fn copy_entry(
     mode: copy::CopyMode,
 ) -> Result<()> {
     if metadata.is_symlink() {
-        symlink(fs::read_link(source)?, destination)
+        crate::platform::fs::symlink(fs::read_link(source)?, destination)
             .with_context(|| format!("copy ignored symlink {}", source.display()))?;
     } else if metadata.is_file() {
         copy::regular_file(source, destination, mode)?;

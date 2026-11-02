@@ -1,6 +1,5 @@
 use std::{
     fs, io,
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
 
@@ -37,8 +36,9 @@ impl RunDirectory {
             !fs::canonicalize(storage.path())?.starts_with(fs::canonicalize(source_root)?),
             "temporary directory is inside the source checkout; set TMPDIR outside the repository"
         );
-        let checkout = storage.path().join("worktree");
-        let scratch = storage.path().join("scratch");
+        let root = fs::canonicalize(storage.path())?;
+        let checkout = root.join("worktree");
+        let scratch = root.join("scratch");
         fs::create_dir(&checkout)?;
         fs::create_dir(&scratch)?;
         Ok(Self {
@@ -109,10 +109,7 @@ fn remove_owned_tree(path: &Path) -> io::Result<()> {
 fn make_directories_removable(path: &Path) -> io::Result<()> {
     let metadata = fs::symlink_metadata(path)?;
     if metadata.is_dir() {
-        fs::set_permissions(
-            path,
-            fs::Permissions::from_mode(metadata.permissions().mode() | 0o700),
-        )?;
+        crate::platform::fs::make_directory_writable(path, &metadata.permissions())?;
         for entry in fs::read_dir(path)? {
             make_directories_removable(&entry?.path())?;
         }

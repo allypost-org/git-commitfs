@@ -214,3 +214,38 @@ fn concurrent_runs_never_share_workspaces() {
     cleanup(&first);
     cleanup(&second);
 }
+
+#[test]
+fn executable_text_is_rejected_without_running_a_shell() {
+    let repo = Repo::new();
+    repo.write("plain-text", b"printf unexpected-shell\n");
+    fs::set_permissions(
+        repo.root.join("plain-text"),
+        fs::Permissions::from_mode(0o755),
+    )
+    .expect("executable text");
+    repo.git(&["add", "."]);
+    let output = repo.run(&["run", "--", "./plain-text"]);
+    assert_failure(&output, 126, "not executable");
+    assert_eq!(output.stdout, [] as [u8; 0]);
+}
+
+#[test]
+fn command_lookup_uses_relative_child_path_and_preserves_arguments() {
+    let repo = Repo::new();
+    repo.write("bin/print-args", b"#!/bin/sh\nprintf '%s' \"$1\"\n");
+    fs::set_permissions(
+        repo.root.join("bin/print-args"),
+        fs::Permissions::from_mode(0o755),
+    )
+    .expect("script mode");
+    repo.git(&["add", "."]);
+    let output = repo
+        .run_command()
+        .env("PATH", "missing:bin:/usr/bin:/bin")
+        .args(["run", "--", "print-args", "argument ; $(literal)"])
+        .output()
+        .expect("relative PATH execution");
+    assert_success(&output);
+    assert_eq!(output.stdout, b"argument ; $(literal)");
+}

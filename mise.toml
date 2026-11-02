@@ -3,10 +3,13 @@ min_version = "2026.10.24"
 
 [vars]
 rustfmt_toolchain = "nightly-2026-10-30"
+build_target = "{{ arch(x64='x86_64', arm64='aarch64') }}-{% if os() == 'macos' %}apple-darwin{% else %}unknown-linux-musl{% endif %}"
 
 [env]
 # hk's file discovery must not refresh the original index's stat cache.
 GIT_OPTIONAL_LOCKS = "0"
+# Keep native macOS builds free of Linux linker flags; explicit targets win.
+CARGO_BUILD_TARGET = "{{ get_env(name='CARGO_BUILD_TARGET', default=vars.build_target) }}"
 
 [tools]
 fd = "10.5.0"

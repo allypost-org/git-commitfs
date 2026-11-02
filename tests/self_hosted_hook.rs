@@ -100,13 +100,15 @@ while test "$#" -gt 0; do
     esac
     shift
 done
-test -n "$target_dir"; test "$target" = x86_64-unknown-linux-musl
+test -n "$target_dir"; test "$target" = "${CARGO_BUILD_TARGET:-fixture-native}"
 test "$locked" = true
 mkdir -p "$target_dir/$target/debug"
 cp "$REAL_BINARY" "$target_dir/$target/debug/git-commitfs"
 printf built > "$STATE/bootstrap"
+printf '%s' "$target" > "$STATE/bootstrap-target"
 "#,
         );
+        executable(&tools.join("rustc"), b"#!/bin/sh\nset -eu\ntest \"$1\" = --print; test \"$2\" = host-tuple\nprintf fixture-native\n");
         repo.write(
             "scripts/check-staged-tree",
             include_bytes!("../scripts/check-staged-tree"),
@@ -132,6 +134,7 @@ printf built > "$STATE/bootstrap"
             .env("PATH", &self.tools)
             .env("STATE", &self.state)
             .env("EXPECTED", "staged")
+            .env_remove("CARGO_BUILD_TARGET")
             .env("REAL_BINARY", env!("CARGO_BIN_EXE_git-commitfs"));
         command
     }
@@ -295,4 +298,46 @@ fn repository_paths_ending_in_newlines_are_preserved() {
     let before = hook.repo.source_state();
     assert_success(&hook.run());
     assert_eq!(hook.repo.source_state(), before);
+}
+
+#[test]
+fn bootstrap_honors_the_selected_cargo_target() {
+    let hook = Hook::new(false);
+    let output = hook
+        .command()
+        .env("CARGO_BUILD_TARGET", "test-native-target")
+        .output()
+        .expect("overridden target hook");
+    assert_success(&output);
+    assert_eq!(
+        fs::read(hook.state.join("bootstrap-target")).expect("bootstrap target"),
+        b"test-native-target"
+    );
+}
+
+#[test]
+fn installed_cli_on_a_relative_path_is_resolved_before_running() {
+    let hook = Hook::new(true);
+    let installed = hook
+        .repo
+        .root
+        .parent()
+        .expect("fixture parent")
+        .join("relative-bin");
+    fs::create_dir(&installed).expect("installed binary directory");
+    symlink(
+        env!("CARGO_BIN_EXE_git-commitfs"),
+        installed.join("git-commitfs"),
+    )
+    .expect("relative installed binary");
+    let path = std::env::join_paths([std::path::Path::new("../relative-bin"), &hook.tools])
+        .expect("relative PATH");
+    assert_success(
+        &hook
+            .command()
+            .env("PATH", path)
+            .output()
+            .expect("relative path hook"),
+    );
+    assert!(!hook.state.join("bootstrap").exists());
 }

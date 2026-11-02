@@ -2,7 +2,7 @@ mod common;
 
 use std::{
     fs::{self, File},
-    os::{fd::AsRawFd, unix::fs::PermissionsExt},
+    os::unix::fs::PermissionsExt,
 };
 
 use common::{Repo, assert_failure, assert_success, inode};
@@ -24,20 +24,24 @@ fn copy_and_auto_keep_writes_private_and_preserve_permissions() {
         let original_inode = inode(&repo.root.join("cache"));
         let output = repo.run(&[
             "run",
+            "--keep=always",
             "--include-ignored",
             &format!("--copy-mode={mode}"),
             "--",
             "sh",
             "-c",
-            "set -e; test \"$(stat -c %a cache)\" = 640; stat -c %i cache; printf changed > cache",
+            "set -e; printf changed > cache; pwd",
         ]);
         assert_success(&output);
-        let new_inode: u64 = String::from_utf8(output.stdout)
-            .expect("inode output")
-            .trim()
-            .parse()
-            .expect("inode number");
-        assert_ne!(original_inode, new_inode);
+        let path = std::path::PathBuf::from(
+            String::from_utf8(output.stdout)
+                .expect("workspace path")
+                .trim_end(),
+        );
+        let metadata = fs::metadata(path.join("cache")).expect("copied cache");
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o640);
+        assert_ne!(original_inode, inode(&path.join("cache")));
+        fs::remove_dir_all(path.parent().expect("run root")).expect("remove retained run");
         assert_eq!(
             fs::read(repo.root.join("cache")).expect("original cache"),
             b"original"
@@ -49,10 +53,20 @@ fn copy_and_auto_keep_writes_private_and_preserve_permissions() {
 fn required_reflink_agrees_with_actual_filesystem_capability() {
     let repo = repo();
     let input = File::open(repo.root.join("cache")).expect("probe input");
-    let probe = File::create(repo.storage.path().join("clone-probe")).expect("probe output");
-    // SAFETY: Both descriptors refer to live regular files and FICLONE takes a source descriptor.
-    let supported =
-        unsafe { libc::ioctl(probe.as_raw_fd(), libc::FICLONE, input.as_raw_fd()) } == 0;
+    let probe_path = repo.storage.path().join("clone-probe");
+    #[cfg(target_os = "linux")]
+    let supported = {
+        let probe = File::create(&probe_path).expect("probe output");
+        rustix::fs::ioctl_ficlone(&probe, &input).is_ok()
+    };
+    #[cfg(target_os = "macos")]
+    let supported = rustix::fs::fclonefileat(
+        &input,
+        rustix::fs::CWD,
+        &probe_path,
+        rustix::fs::CloneFlags::empty(),
+    )
+    .is_ok();
     let output = repo.run(&[
         "run",
         "--include-ignored",

@@ -1,7 +1,6 @@
 use std::{
     ffi::{OsStr, OsString},
     fs::File,
-    os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     sync::Arc,
@@ -142,7 +141,7 @@ pub fn record(mut bytes: Vec<u8>) -> OsString {
     if bytes.last() == Some(&b'\n') {
         bytes.pop();
     }
-    OsString::from_vec(bytes)
+    crate::platform::fs::os_string(bytes)
 }
 
 pub fn quote_path(path: &OsStr) -> OsString {

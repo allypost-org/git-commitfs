@@ -21,7 +21,9 @@ impl Repo {
 
     pub fn with_format(format: &str) -> Self {
         let storage = tempfile::tempdir().expect("fixture storage");
-        let root = storage.path().join("repo");
+        let root = fs::canonicalize(storage.path())
+            .expect("canonical fixture root")
+            .join("repo");
         fs::create_dir(&root).expect("fixture directory");
         let repo = Self { storage, root };
         repo.git(&[

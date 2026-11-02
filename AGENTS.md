@@ -8,7 +8,8 @@ the Git index. The approved design and implementation plan are under
 implemented as one package and one binary, `git-commitfs`, under `src/`.
 Capture (`snapshot`), materialization (`checkout`), ignored imports (`ignored` and
 `copy`), lifetime (`workspace`), and command/process supervision (`runner`,
-`process`, `terminal`) have separate responsibilities. Integration tests use real
+`process`) have separate responsibilities. `src/platform/` owns OS filesystem,
+process-group, execution and terminal primitives; keep policy in the callers. Integration tests use real
 Git fixtures; `tests/acceptance.rs` also exercises real hooks and partial commits.
 
 ## Toolchain and commands
@@ -17,13 +18,19 @@ Git fixtures; `tests/acceptance.rs` also exercises real hooks and partial commit
   `mise.lock` records resolutions. Do not duplicate pins in another toolchain file.
 - Stable Rust builds, tests, and runs Clippy. A separately pinned nightly runs
   rustfmt because the import/string formatting settings require nightly.
-- Linux v1 defaults to `x86_64-unknown-linux-musl` in `.cargo/config.toml`.
-  mise installs that target for stable Rust. Release output is
+- mise selects `x86_64-unknown-linux-musl` on x86-64 Linux and the native Apple
+  target on macOS through `CARGO_BUILD_TARGET`; explicit environment overrides
+  win. Plain Cargo outside mise defaults to its host. mise installs the musl
+  standard library for stable Rust (unused on macOS). Linux release output is
   `target/x86_64-unknown-linux-musl/release/git-commitfs`, statically linked;
-  `just install-cli` explicitly selects musl because Cargo install ignores the
-  normal build-target default. Keep CI's ELF static-link checks in place.
+  macOS output is `target/<native-apple-target>/release/git-commitfs`.
+  Installation and hook bootstrap use the same selected target. Keep CI's ELF
+  static-link checks in place.
 - mise manages Rust, nightly rustfmt, just, hk, Pkl, Tombi, fd, and watchexec.
-  Git >= 2.43, Bash, and standard Linux utilities are system prerequisites.
+  Git >= 2.43, Bash (macOS system Bash 3.2 works), and standard Unix utilities
+  are system prerequisites; native macOS builds need Xcode Command Line Tools.
+  Apple Silicon macOS is validated; Intel macOS is not. The pinned hk release
+  has no Intel macOS binary.
 - Bootstrap with `mise trust` and `mise exec -- just setup`. This installs
   task-scoped formatter tools and this clone's hk hooks, without global hook changes.
 - Prefer `mise exec -- just <recipe>`; in an activated mise shell, use `just`.
@@ -95,5 +102,8 @@ intentional hook bypass is needed, and explain the reason.
 - Preserve OS-string paths/arguments and NUL-delimited Git output.
 - Never hardlink writable workspace files to source files.
 - Scope Git environment overrides to subprocesses, not process-wide mutation.
+- Use std/rustix behind the platform capability interfaces. Linux uses subreaper
+  adoption; macOS observes orphaned group completion with sleeping event waits
+  and uses direct execve to avoid libc's implicit shell fallback on ENOEXEC.
 - Keep capture, materialization, copying, and execution responsibilities separate;
   add generic backends only when another real implementation needs them.

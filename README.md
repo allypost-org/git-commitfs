@@ -4,8 +4,9 @@ Run commands against a clean, disposable checkout of the Git index. Partially
 staged files use their staged content; unstaged edits and ordinary untracked files
 are absent. Writes stay in the disposable checkout and are removed afterward.
 
-V1 supports Linux and Git >= 2.43. It needs no root privileges, FUSE, user
-namespaces, or mount permissions. macOS and Windows support are deferred.
+Supports Linux and macOS with Git >= 2.43. No root privileges, FUSE, user
+namespaces, or mount permissions are needed. macOS is validated on Apple Silicon;
+Intel macOS is not yet validated. Windows and BSD support remain future work.
 
 ## Install and run
 
@@ -18,16 +19,24 @@ git-commitfs run -- cargo fmt --check
 git commitfs run --keep=on-failure -- cargo clippy -- -D warnings
 ```
 
-Linux v1 builds default to `x86_64-unknown-linux-musl`. `just build` produces a
+On x86-64 Linux, mise selects `x86_64-unknown-linux-musl`. `just build` produces a
 statically linked executable at
 `target/x86_64-unknown-linux-musl/release/git-commitfs`, with no dynamic loader or
 shared-library dependencies. You can copy it to another compatible x86-64 Linux
 system without installing a particular libc. Git >= 2.43 and the commands and
 filters you run must still be available there.
 
-`just install-cli` also selects musl explicitly. For a different target, pass
-`--target <triple>` to Cargo (or to `just build` / `just dev-build`) and install
-that target's standard library first. macOS and Windows support remain deferred.
+On macOS, mise selects the native Apple target (`aarch64-apple-darwin` on
+Apple Silicon); the release binary is under `target/<target>/release/`.
+`just install-cli` and the hook bootstrap use the same selected target.
+Override it with `CARGO_BUILD_TARGET=<triple> mise exec -- just build` (or
+`just install-cli`), after installing that target's standard library. Plain
+Cargo outside mise uses the native host target.
+
+Filesystem behavior follows the local disk: APFS supports copy-on-write clones,
+but commonly rejects non-UTF-8 filenames and is case insensitive. The CLI keeps
+Unix path/argument bytes intact; it cannot materialize filenames the destination
+filesystem rejects. Non-UTF-8 arguments remain supported on macOS.
 
 The binary works directly or as a Git subcommand. Commands start at the snapshot
 repository root, even when invoked from a subdirectory. Everything after `--`
@@ -144,7 +153,8 @@ record the scope and deferred optimizations.
 ## Development setup
 
 Install [mise](https://mise.jdx.dev/) >= 2026.10.24, Git >= 2.43, Bash, and the
-usual Linux build tools. The CI mise version matches the project's minimum so
+usual Linux build tools or macOS Xcode Command Line Tools (`xcode-select --install`).
+The CI mise version matches the project's minimum so
 older lockfile writers cannot strip tool metadata or task-scoped tools. Then run:
 
 ```sh
@@ -152,9 +162,14 @@ mise trust
 mise exec -- just setup
 ```
 
+The pinned hk release provides macOS binaries for Apple Silicon only; the
+complete `just setup`/hook workflow on Intel Macs is therefore not supported by
+this toolchain configuration.
+
 Tool versions are pinned in `mise.toml` and resolved in `mise.lock`. Stable Rust
 is used for builds/Clippy; the nightly formatter is separately managed through
-mise tasks. mise also installs the stable musl target. `just setup` installs both
+mise tasks. mise also installs the stable musl standard library for Linux builds
+(this extra target is unused by native macOS builds). `just setup` installs both
 toolchains and enables hk for this clone, without changing global Git hooks.
 Outside an activated mise shell, prefix recipes with `mise exec --`.
 
@@ -182,7 +197,7 @@ changes, including staged deletions, trigger the self-hosted staged check:
 
 1. `scripts/check-staged-tree` finds a working `git-commitfs` on PATH. If none is
    available, it builds a debug binary into `target/hk-bootstrap` using mise and
-   the pinned musl target. Cargo reuses those build artifacts on later runs.
+   the mise-selected platform target. Cargo reuses those build artifacts on later runs.
 2. The wrapper invokes `git-commitfs run -- bash scripts/check-hook-workspace ...`.
    The app captures the effective index and creates the independent checkout.
 3. The helper from that staged checkout runs `just check`, then `just fmt-dev`.
@@ -202,9 +217,10 @@ formatter/version-bump command when you want its output to persist.
 
 ## Verification
 
-Linux CI runs the mise-managed checks, the complete nightly-then-stable formatter
-pipeline, a release build with ELF checks for static linking, and package inspection.
-Separate jobs run the suite with Git 2.43.7 and as a non-root user in a restricted
+Linux and Apple Silicon macOS CI run the mise-managed checks, the complete
+nightly-then-stable formatter pipeline, a release build, and package inspection.
+Linux also verifies static ELF linking. Separate Linux jobs run the suite with
+Git 2.43.7 and as a non-root user in a restricted
 container with no FUSE, capabilities, or network. Run the container check locally
 with Docker and Python 3:
 

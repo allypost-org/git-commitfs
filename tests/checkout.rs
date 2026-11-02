@@ -133,15 +133,32 @@ fn binary_empty_executable_and_symlink_entries_are_preserved() {
 }
 
 #[test]
-fn non_utf8_and_newline_paths_round_trip_without_trimming() {
+fn newline_paths_round_trip_without_trimming() {
+    byte_paths_round_trip(b"repo with spaces\n", b"name\n");
+}
+
+#[test]
+fn non_utf8_paths_round_trip_when_supported_by_the_filesystem() {
+    byte_paths_round_trip(b"repo with spaces\n\xff\n", b"name\n\xff\n");
+}
+
+fn byte_paths_round_trip(root_name: &[u8], file_name: &[u8]) {
     let mut repo = Repo::new();
     let root = repo
         .storage
         .path()
-        .join(OsString::from_vec(b"repo with spaces\n\xff\n".to_vec()));
-    fs::rename(&repo.root, &root).expect("rename source root");
+        .join(OsString::from_vec(root_name.to_vec()));
+    if let Err(error) = fs::rename(&repo.root, &root) {
+        if error.raw_os_error() == Some(libc::EILSEQ) && !root_name.is_ascii() {
+            eprintln!(
+                "filesystem rejects non-UTF-8 names: {error}; byte argv coverage remains active"
+            );
+            return;
+        }
+        panic!("rename source root: {error}");
+    }
     repo.root = root;
-    let name = OsString::from_vec(b"name\n\xff\n".to_vec());
+    let name = OsString::from_vec(file_name.to_vec());
     repo.write(&name, b"path content");
     repo.git(&["add", "."]);
     let output = repo

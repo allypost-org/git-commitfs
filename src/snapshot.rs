@@ -3,7 +3,6 @@ use std::{
     ffi::{OsStr, OsString},
     fs::{self, File},
     io,
-    os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
 };
 
@@ -271,7 +270,7 @@ fn copy_index(mut original: File, destination: &Path) -> Result<()> {
 fn paths(data: &[u8]) -> HashSet<PathBuf> {
     data.split(|b| *b == 0)
         .filter(|p| !p.is_empty())
-        .map(|p| PathBuf::from(OsString::from_vec(p.to_vec())))
+        .map(|p| PathBuf::from(crate::platform::fs::os_string(p.to_vec())))
         .collect()
 }
 
@@ -293,8 +292,8 @@ fn checkout_settings(source: &SourceRepository) -> Result<CheckoutSettings> {
             .position(|b| *b == b'\n')
             .context("malformed Git configuration record")?;
         config.push((
-            OsString::from_vec(record[..separator].to_vec()),
-            OsString::from_vec(record[separator + 1..].to_vec()),
+            crate::platform::fs::os_string(record[..separator].to_vec()),
+            crate::platform::fs::os_string(record[separator + 1..].to_vec()),
         ));
     }
     let info = PathBuf::from(record(source.git.output(&[

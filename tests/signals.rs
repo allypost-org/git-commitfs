@@ -20,11 +20,9 @@ struct Managed {
 
 impl Managed {
     fn spawn(command: &mut Command) -> Self {
-        // SAFETY: This test process adopts only its own orphaned fixture descendants.
-        assert_eq!(
-            unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) },
-            0
-        );
+        #[cfg(target_os = "linux")]
+        rustix::process::set_child_subreaper(Some(rustix::process::Pid::INIT))
+            .expect("fixture subreaper");
         let child = command
             .process_group(0)
             .stdout(Stdio::piped())
@@ -106,6 +104,7 @@ impl Drop for Managed {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn collect_groups(pid: i32, groups: &mut Vec<i32>) {
     if let Ok(children) = fs::read_to_string(format!("/proc/{pid}/task/{pid}/children")) {
         for child in children
@@ -114,6 +113,27 @@ fn collect_groups(pid: i32, groups: &mut Vec<i32>) {
         {
             collect_groups(child, groups);
             // SAFETY: The PID is a descendant of this test's owned child.
+            let group = unsafe { libc::getpgid(child) };
+            if group > 0 {
+                groups.push(group);
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn collect_groups(pid: i32, groups: &mut Vec<i32>) {
+    use libproc::processes::{ProcFilter, pids_by_type};
+    let Ok(parent) = u32::try_from(pid) else {
+        return;
+    };
+    if let Ok(children) = pids_by_type(ProcFilter::ByParentProcess { ppid: parent }) {
+        for child in children
+            .into_iter()
+            .filter_map(|pid| i32::try_from(pid).ok())
+        {
+            collect_groups(child, groups);
+            // SAFETY: The child was found under this test's fixture process.
             let group = unsafe { libc::getpgid(child) };
             if group > 0 {
                 groups.push(group);
@@ -161,7 +181,15 @@ fn ready(child: &mut Managed, receiver: &Receiver<String>) -> (i32, PathBuf) {
 
 fn alive(pid: i32) -> bool {
     // SAFETY: Signal 0 only queries whether the fixture PID exists.
-    unsafe { libc::kill(pid, 0) == 0 }
+    let present = unsafe { libc::kill(pid, 0) == 0 };
+    #[cfg(target_os = "macos")]
+    if present {
+        // launchd reaps orphaned zombies asynchronously; they cannot execute.
+        if let Ok(info) = libproc::proc_pid::pidinfo::<libproc::bsd_info::BSDInfo>(pid, 1) {
+            return info.pbi_status != libc::SZOMB;
+        }
+    }
+    present
 }
 
 #[test]
@@ -311,6 +339,10 @@ fn a_second_signal_escalates_without_waiting_for_the_grace_period() {
 }
 
 #[test]
+#[allow(
+    clippy::useless_conversion,
+    reason = "ioctl request types differ between Linux and macOS"
+)]
 fn interactive_input_ctrl_c_and_terminal_restoration_work() {
     let repo = Repo::new();
     let (mut master_fd, mut slave_fd) = (-1, -1);
@@ -321,8 +353,8 @@ fn interactive_input_ctrl_c_and_terminal_restoration_work() {
                 &raw mut master_fd,
                 &raw mut slave_fd,
                 std::ptr::null_mut(),
-                std::ptr::null(),
-                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
             )
         },
         0
@@ -347,7 +379,7 @@ fn interactive_input_ctrl_c_and_terminal_restoration_work() {
     unsafe {
         command.pre_exec(|| {
             if libc::setsid() == -1
-                || libc::ioctl(0, libc::TIOCSCTTY, 0) == -1
+                || libc::ioctl(0, libc::TIOCSCTTY.into(), 0) == -1
                 || libc::tcsetpgrp(0, libc::getpgrp()) == -1
             {
                 return Err(std::io::Error::last_os_error());

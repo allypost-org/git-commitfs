@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export LC_ALL=C.UTF-8
+export LC_ALL=C
 
+# Match UTF-8 byte sequences with POSIX EREs; BSD grep has no -P mode.
+glyphs=$'\342\200\223|\342\200\224|\342\200\230|\342\200\231|\342\200\234|\342\200\235|\342\200\242|\342\200\246|\342\206\222|\302\240'
 diff=$(git diff --cached --no-ext-diff --no-textconv --no-color --unified=0)
+status=0
 hits=$(
     printf '%s\n' "$diff" |
         sed '/^+++ /d; /^+/!d' |
-        grep -nP '\x{2013}|\x{2014}|\x{2018}|\x{2019}|\x{201C}|\x{201D}|\x{2022}|\x{2026}|\x{2192}|\x{00A0}' || true
-)
+        grep -nE "$glyphs"
+) || status=$?
+if (( status > 1 )); then
+    exit "$status"
+fi
 
 if [[ -n "$hits" ]]; then
     printf '%s\n' "$hits" >&2

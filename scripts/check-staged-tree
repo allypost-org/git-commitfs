@@ -27,13 +27,17 @@ esac
 binary=$(type -P git-commitfs || true)
 # A mise shim can exist even when its underlying CLI is no longer installed.
 if [[ -n "$binary" ]] && "$binary" --version >/dev/null 2>&1; then
-    binary=$(realpath -s -- "$binary")
+    # Preserve a relative PATH entry without requiring GNU realpath.
+    if [[ "$binary" != /* ]]; then binary="$PWD/$binary"; fi
 else
     bootstrap="$root/target/hk-bootstrap"
     printf '%s\n' '==> building git-commitfs for the staged hook' >&2
+    # Expand target selection inside the mise-managed environment.
+    # shellcheck disable=SC2016
+    target=$(mise exec -- sh -c 'printf "%s" "${CARGO_BUILD_TARGET:-$(rustc --print host-tuple)}"')
     mise exec -- cargo build --locked --bin git-commitfs \
-        --target x86_64-unknown-linux-musl --target-dir "$bootstrap"
-    binary="$bootstrap/x86_64-unknown-linux-musl/debug/git-commitfs"
+        --target "$target" --target-dir "$bootstrap"
+    binary="$bootstrap/$target/debug/git-commitfs"
 fi
 
 # Keep the effective Git index environment intact until the app captures it.

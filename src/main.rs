@@ -4,10 +4,10 @@ mod cli;
 mod copy;
 mod git;
 mod ignored;
+mod platform;
 mod process;
 mod runner;
 mod snapshot;
-mod terminal;
 mod workspace;
 
 use std::process::ExitCode;

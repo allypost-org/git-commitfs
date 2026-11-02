@@ -1,7 +1,6 @@
 use std::{
     fs::File,
     io::{self, Read, Write},
-    os::unix::process::CommandExt,
     process::{Child, Command, ExitStatus, Output, Stdio},
     sync::{
         Arc, Mutex,
@@ -18,7 +17,15 @@ use signal_hook::{
     iterator::{Handle, Signals},
 };
 
-use crate::terminal::TerminalGuard;
+use crate::platform::process::{self as platform, ProcessGroup, TerminalGuard};
+
+#[derive(Debug)]
+pub struct SpawnFailure;
+impl std::fmt::Display for SpawnFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("start managed process")
+    }
+}
 
 const GRACE: Duration = Duration::from_secs(2);
 
@@ -46,10 +53,7 @@ pub struct Supervisor {
 
 impl Supervisor {
     pub fn new() -> Result<Arc<Self>> {
-        // SAFETY: Linux subreaper status affects only this CLI and permits reaping its orphaned descendants.
-        if unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) } == -1 {
-            return Err(io::Error::last_os_error()).context("enable child-process supervision");
-        }
+        platform::enable_supervision().context("enable child-process supervision")?;
         let mut signals =
             Signals::new([SIGINT, SIGTERM, SIGHUP, SIGCHLD]).context("register process signals")?;
         let handle = signals.handle();
@@ -94,11 +98,7 @@ impl Supervisor {
 
     fn spawn(&self, command: &mut Command, foreground: bool) -> Result<ManagedChild> {
         self.check()?;
-        let child = command
-            .process_group(0)
-            .spawn()
-            .context("start managed process")?;
-        let group = i32::try_from(child.id()).context("process-group ID exceeds PID range")?;
+        let (child, group) = ProcessGroup::spawn(command).context(SpawnFailure)?;
         let mut managed = ManagedChild {
             child,
             group,
@@ -106,7 +106,7 @@ impl Supervisor {
             terminal: TerminalGuard::default(),
         };
         if foreground {
-            managed.terminal = TerminalGuard::give_to(group)?;
+            managed.terminal = group.foreground()?;
         }
         Ok(managed)
     }
@@ -169,10 +169,9 @@ impl Supervisor {
             let count = self.state.count.load(Ordering::SeqCst);
             if count > signals_seen {
                 let signal = self.state.first.load(Ordering::SeqCst);
-                kill_group(
-                    child.group,
-                    if signals_seen == 0 { signal } else { SIGKILL },
-                )?;
+                child
+                    .group
+                    .signal(if signals_seen == 0 { signal } else { SIGKILL })?;
                 interrupted = Some(signal);
                 deadline = Some(Instant::now() + GRACE);
                 signals_seen = count;
@@ -183,39 +182,44 @@ impl Supervisor {
                 return interrupted.map_or(Ok(status), |signal| Err(Interrupted(signal).into()));
             }
             if deadline.is_some_and(|end| Instant::now() >= end) {
-                kill_group(child.group, SIGKILL)?;
+                child.group.signal(SIGKILL)?;
                 deadline = None;
             }
             self.event(deadline.map(|end| end.saturating_duration_since(Instant::now())))?;
         }
     }
 
-    fn stop_group(&self, group: i32) -> Result<()> {
-        reap(group);
-        if !group_exists(group) {
+    fn stop_group(&self, group: ProcessGroup) -> Result<()> {
+        group.reap()?;
+        if !group.exists()? {
             return Ok(());
         }
-        kill_group(group, SIGTERM)?;
+        group.signal(SIGTERM)?;
         let deadline = Instant::now() + GRACE;
         let initial_count = self.state.count.load(Ordering::SeqCst);
         let mut killed = false;
         loop {
-            reap(group);
-            if !group_exists(group) {
+            group.reap()?;
+            if !group.exists()? {
                 return Ok(());
             }
             if !killed
                 && (Instant::now() >= deadline
                     || self.state.count.load(Ordering::SeqCst) > initial_count)
             {
-                kill_group(group, SIGKILL)?;
+                group.signal(SIGKILL)?;
                 killed = true;
             }
-            self.event(if killed {
+            let timeout = if killed {
                 None
             } else {
                 Some(deadline.saturating_duration_since(Instant::now()))
-            })?;
+            };
+            let timeout = match (timeout, platform::completion_interval()) {
+                (Some(deadline), Some(interval)) => Some(deadline.min(interval)),
+                (deadline, interval) => deadline.or(interval),
+            };
+            self.event(timeout)?;
         }
     }
 
@@ -248,39 +252,18 @@ impl Drop for Supervisor {
 
 struct ManagedChild {
     child: Child,
-    group: i32,
+    group: ProcessGroup,
     finished: bool,
     terminal: TerminalGuard,
 }
 impl Drop for ManagedChild {
     fn drop(&mut self) {
         if !self.finished {
-            let _ = kill_group(self.group, SIGKILL);
+            let _ = self.group.signal(SIGKILL);
             let _ = self.child.wait();
-            reap(self.group);
+            let _ = self.group.reap();
         }
     }
-}
-
-fn kill_group(group: i32, signal: i32) -> io::Result<()> {
-    // SAFETY: The group ID is a positive PID allocated to a child spawned in its own group.
-    if unsafe { libc::kill(-group, signal) } == -1 {
-        let error = io::Error::last_os_error();
-        if error.raw_os_error() != Some(libc::ESRCH) {
-            return Err(error);
-        }
-    }
-    Ok(())
-}
-
-fn group_exists(group: i32) -> bool {
-    // SAFETY: Signal 0 only checks the managed process group's existence.
-    unsafe { libc::kill(-group, 0) == 0 }
-}
-
-fn reap(group: i32) {
-    // SAFETY: The main child has already been reaped; only adopted children in this managed group are collected.
-    unsafe { while libc::waitpid(-group, std::ptr::null_mut(), libc::WNOHANG) > 0 {} }
 }
 
 fn reader(mut pipe: impl Read + Send + 'static) -> JoinHandle<io::Result<Vec<u8>>> {

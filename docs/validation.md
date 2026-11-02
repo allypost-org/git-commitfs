@@ -1,5 +1,56 @@
 # Local validation
 
+## macOS port (2026-10-31)
+
+The macOS port uses platform capability modules with std/rustix primitives,
+plus macOS libproc enumeration. The Linux static target is now selected by mise;
+plain Cargo outside mise uses the native host. Copy fallback recognizes both
+macOS not-supported error codes. macOS group draining distinguishes running,
+committed-to-exit and zombie members, and uses sleeping event waits because the
+OS reaps orphaned grandchildren. A direct exec adapter prevents Apple's libc
+from interpreting executable text through an implicit shell.
+
+Validation in this change:
+
+- Linux: `mise exec -- just fmt-dev`, `just check` (84 tests), and the
+  restricted non-root/container suite (84 tests) pass.
+- Real Apple Silicon Mac: macOS 27.0.1, native aarch64-apple-darwin Rust 1.99.1,
+  Apple Git 2.50.1. `just fmt-dev` and `just check` pass (87 tests, including three
+  macOS-only process-state regressions). The signal/PTY suite passed ten
+  consecutive runs after the exiting-process fix.
+- Whole-change review found a process-group membership race. An injected
+  regression reproduced a newly forked worker missing from an earlier snapshot.
+  Completion now preserves positive kernel liveness evidence and rechecks for
+  new members before accepting an exiting/gone snapshot; signaling retries a
+  newly live group once. The regression and full suites pass after the fix.
+- The same real-Git suites cover alternate/split/sparse indexes, partial commits,
+  source-state invariance, checkout filters, ignored imports, retention and
+  foreground terminal input/restoration on both hosts.
+- Native Mac `just dev-run --help`, release build, and `just install-cli` into a
+  temporary install root pass. The release is a Mach-O arm64 executable.
+- The real hk `just check-staged` pipeline passes on the Mac, using native-target
+  bootstrap and the complete read-only/modifying formatter passes. Linux commits
+  also execute the real hk pipeline without bypassing hooks.
+- Linux release remains a static PIE: no ELF INTERP or NEEDED entries.
+  ShellCheck passes the hook scripts; actionlint passes the CI workflow.
+
+The Mac validation uses an isolated temporary checkout. The user's original Mac
+clone remains untouched, including its existing mise.lock edits. macOS CI is
+configured with the Apple Silicon macos-15 runner; hosted execution of the new
+matrix has not been observed in this session. Intel macOS is not validated, and
+the pinned hk release has no Intel macOS binary.
+
+APFS rejects the invalid-byte filename fixture with EILSEQ. That capability
+branch reports the filesystem limitation; separate newline-path and non-UTF-8
+argv tests still execute on macOS. Real clone success remains filesystem-dependent;
+Linux tmpfs exercises strict failure and injected policy branches.
+
+The glyph hook now uses POSIX extended regular expressions with UTF-8 byte
+escapes. A real BSD-grep regression proves it rejects decorative glyphs while
+allowing ASCII and ordinary language Unicode; grep failures no longer silently
+pass the check.
+
+
 ## Self-hosted staged checks
 
 The hk staged check now delegates checkout creation and cleanup to
