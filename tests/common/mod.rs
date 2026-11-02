@@ -170,6 +170,19 @@ fn collect_state(
     }
 }
 
+// Tests that scrub PATH must keep a Git meeting the app's requirement
+// reachable: the app discovers Git through the environment it is given, and
+// system Git on some hosts (hosted macOS) is older than it supports.
+pub fn git_dir() -> PathBuf {
+    std::env::split_paths(&std::env::var_os("PATH").expect("PATH"))
+        .map(|directory| directory.join("git"))
+        .find(|path| path.is_file())
+        .expect("fixture Git on PATH")
+        .parent()
+        .expect("Git with a parent directory")
+        .to_owned()
+}
+
 pub fn assert_success(output: &Output) {
     assert!(
         output.status.success(),

@@ -5,7 +5,7 @@ use std::{
     fs,
     io::Write,
     os::unix::{ffi::OsStringExt, fs::PermissionsExt},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Stdio,
 };
 
@@ -240,9 +240,19 @@ fn command_lookup_uses_relative_child_path_and_preserves_arguments() {
     )
     .expect("script mode");
     repo.git(&["add", "."]);
+    // The app discovers Git through this PATH; keep the fixture Git that the
+    // suite itself resolved reachable ahead of the system directories.
+    let path = std::env::join_paths([
+        Path::new("missing"),
+        Path::new("bin"),
+        common::git_dir().as_path(),
+        Path::new("/usr/bin"),
+        Path::new("/bin"),
+    ])
+    .expect("fixture PATH");
     let output = repo
         .run_command()
-        .env("PATH", "missing:bin:/usr/bin:/bin")
+        .env("PATH", path)
         .args(["run", "--", "print-args", "argument ; $(literal)"])
         .output()
         .expect("relative PATH execution");
