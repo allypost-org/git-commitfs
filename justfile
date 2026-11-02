@@ -104,3 +104,11 @@ check-staged:
 
 install-cli *args:
     cargo install --locked --path . --bin git-commitfs --target "${CARGO_BUILD_TARGET:-$(rustc --print host-tuple)}" "$@"
+
+# Package the release binary for the selected target into dist/.
+package: build
+    scripts/package-release
+
+# Bump the version, commit and tag locally (does not push), e.g. `just release 0.2.0`.
+release version:
+    scripts/release "{{ version }}"

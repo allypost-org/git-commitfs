@@ -2,3 +2,4 @@
 /dev
 /.env
 /mise.local.toml
+/dist

@@ -8,12 +8,38 @@ Supports Linux and macOS with Git >= 2.43. No root privileges, FUSE, user
 namespaces, or mount permissions are needed. macOS is validated on Apple Silicon;
 Intel macOS is not yet validated. Windows and BSD support remain future work.
 
-## Install and run
+## Install
 
-With the mise-managed toolchain installed (see development setup below):
+Release binaries are published on the
+[GitHub releases page](https://github.com/allypost-org/git-commitfs/releases) for
+x86-64 Linux (static musl) and Apple Silicon macOS. Git >= 2.43 is still required.
 
 ```sh
-mise exec -- just install-cli
+# mise
+mise use --global github:allypost-org/git-commitfs
+
+# cargo-binstall (downloads the release binary instead of compiling)
+cargo binstall --git https://github.com/allypost-org/git-commitfs git-commitfs
+
+# from source with Cargo
+cargo install --locked --git https://github.com/allypost-org/git-commitfs
+```
+
+Each archive is named `git-commitfs-<target>-v<version>.tar.gz`; the release also
+carries `SHA256SUMS`, and the archives have GitHub build-provenance attestations:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify git-commitfs-<target>-v<version>.tar.gz --repo allypost-org/git-commitfs
+```
+
+## Run
+
+With a build from the mise-managed toolchain (see development setup below), or one
+of the installs above:
+
+```sh
+mise exec -- just install-cli   # only when building from a checkout
 git commitfs run -- cargo test
 git-commitfs run -- cargo fmt --check
 git commitfs run --keep=on-failure -- cargo clippy -- -D warnings
@@ -190,6 +216,21 @@ then stable rustfmt determines the final layout using its supported settings.
 `just fmt-stable --check` verifies that final layout; the staged hook additionally
 checks that the full nightly-then-stable `fmt-dev` pipeline leaves files unchanged.
 
+## Releasing
+
+```sh
+just release 0.2.0   # bumps Cargo.toml/Cargo.lock, commits, and tags v0.2.0 locally
+git push origin main v0.2.0
+```
+
+Pushing the tag runs `.github/workflows/release.yml`: it tests, builds the Linux
+and macOS binaries, checks the version matches the tag, attests the archives and
+creates the GitHub release with generated notes (tags with a `-suffix` are marked
+as pre-releases). If the repository variable `PUBLISH_CRATE` is `true` and a
+crates.io trusted publisher is configured for that workflow, it also publishes the
+crate. `just package` builds and packages the current platform's archive into
+`dist/` for local inspection.
+
 ## Pre-commit checks
 
 hk checks diff hygiene and decorative typographic glyphs. Rust/manifests/tooling
@@ -230,3 +271,7 @@ mise exec -- bash scripts/test-restricted
 
 [Validation notes](docs/validation.md) record local compatibility runs and initial
 preparation measurements. No speed threshold or persistent-cache speedup is claimed.
+
+## License
+
+Apache-2.0; see [LICENSE](LICENSE).
